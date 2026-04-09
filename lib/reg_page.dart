@@ -16,7 +16,7 @@ class _RegPageState extends State<RegPage> {
   final passController = TextEditingController();
   final repeatPassController = TextEditingController();
   final usernameController = TextEditingController();
-  
+
   final AuthServices authService = AuthServices();
   bool _isLoading = false;
 
@@ -27,6 +27,69 @@ class _RegPageState extends State<RegPage> {
     repeatPassController.dispose();
     usernameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _register() async {
+    if (usernameController.text.isEmpty ||
+        emailController.text.isEmpty ||
+        passController.text.isEmpty ||
+        repeatPassController.text.isEmpty) {
+      _showSnackBar("Заполните все поля!", Colors.redAccent);
+      return;
+    }
+
+    if (passController.text != repeatPassController.text) {
+      _showSnackBar("Пароли не совпадают!", Colors.redAccent);
+      return;
+    }
+
+    if (passController.text.length < 6) {
+      _showSnackBar("Пароль должен быть не менее 6 символов", Colors.redAccent);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = await authService.singUp(
+        emailController.text.trim(),
+        passController.text,
+        username: usernameController.text.trim(),
+      );
+
+      if (user != null && mounted) {
+        debugPrint('✅ Регистрация успешна: ${user.email}');
+
+        // Если подтверждение email отключено в Supabase — сразу заходим
+        if (user.emailConfirmedAt != null) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+        } else {
+          _showSnackBar("Регистрация успешна! Проверьте почту для подтверждения.", Colors.green);
+          Navigator.pop(context); // возвращаемся на экран входа
+        }
+      }
+    } on AuthException catch (e) {
+      String msg = e.message;
+      if (msg.contains('already registered')) {
+        msg = "Пользователь с таким email уже существует";
+      }
+      if (mounted) _showSnackBar(msg, Colors.redAccent);
+    } catch (e) {
+      if (mounted) _showSnackBar("Ошибка: $e", Colors.redAccent);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackBar(String message, Color bgColor) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: bgColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
@@ -49,11 +112,7 @@ class _RegPageState extends State<RegPage> {
             children: [
               const Text(
                 '🚀 Регистрация',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const SizedBox(height: 40),
 
@@ -73,27 +132,15 @@ class _RegPageState extends State<RegPage> {
                   onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF7C3AED),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                   child: _isLoading
                       ? const SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                         )
-                      : const Text(
-                          'Зарегистрироваться',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                      : const Text('Зарегистрироваться', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
 
@@ -127,80 +174,11 @@ class _RegPageState extends State<RegPage> {
         prefixIcon: Icon(icon, color: Colors.grey),
         filled: true,
         fillColor: const Color(0xFF1A1A2E),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 2),
         ),
-      ),
-    );
-  }
-
-  Future<void> _register() async {
-    // Валидация
-    if (usernameController.text.isEmpty || emailController.text.isEmpty ||
-        passController.text.isEmpty || repeatPassController.text.isEmpty) {
-      _showSnackBar("Заполните все поля!", Colors.redAccent);
-      return;
-    }
-
-    if (passController.text != repeatPassController.text) {
-      _showSnackBar("Пароли не совпадают!", Colors.redAccent);
-      return;
-    }
-
-    if (passController.text.length < 6) {
-      _showSnackBar("Пароль должен быть не менее 6 символов", Colors.redAccent);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final user = await authService.singUp(
-        emailController.text.trim(),
-        passController.text,
-        
-      );
-
-      if (user != null && mounted) {
-        debugPrint('✅ Регистрация успешна: ${user.email}');
-        
-        // 🔔 Если включено подтверждение email — пользователь получит письмо
-        // Сессия создастся после подтверждения. Для теста отключите в Supabase Dashboard
-        
-        // ✅ Триггер handle_new_user автоматически создаст запись в public."User"
-        // НЕ нужно вручную вызывать userTable.addUserTable()
-        
-        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-      } else if (mounted) {
-        _showSnackBar("Ошибка регистрации", Colors.redAccent);
-      }
-    } on AuthException catch (e) {
-      if (mounted) {
-        _showSnackBar(e.message, Colors.redAccent);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar("Ошибка: $e", Colors.redAccent);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message, Color bgColor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: bgColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

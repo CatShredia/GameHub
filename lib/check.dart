@@ -1,4 +1,3 @@
-// check.dart — финальная версия
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_page.dart';
@@ -6,6 +5,7 @@ import 'home.dart';
 
 class CheckPage extends StatefulWidget {
   const CheckPage({super.key});
+
   @override
   State<CheckPage> createState() => _CheckPageState();
 }
@@ -21,14 +21,17 @@ class _CheckPageState extends State<CheckPage> {
   }
 
   Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    
+    // Небольшая задержка для полной инициализации Supabase
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    final session = Supabase.instance.client.auth.currentSession;
     final user = Supabase.instance.client.auth.currentUser;
-    debugPrint('🔍 Auth check: user=${user?.email}');
-    
+
+    debugPrint('🔍 Auth check: user=${user?.email}, session exists=${session != null}');
+
     if (mounted) {
       setState(() {
-        _isLoggedIn = user != null;
+        _isLoggedIn = user != null && session != null;
         _isLoading = false;
       });
     }
@@ -44,6 +47,7 @@ class _CheckPageState extends State<CheckPage> {
         ),
       );
     }
+
     return _isLoggedIn ? const HomePage() : const AuthPage();
   }
 }

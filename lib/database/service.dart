@@ -1,54 +1,52 @@
-import '/database/user.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthServices {
-  final Supabase supabase = Supabase.instance;
+  final _client = Supabase.instance.client;
 
-  Future<LocalUser?> singIn(String email, String password)async{
+  /// Вход в систему
+  Future<User?> singIn(String email, String password) async {
     try {
-
-      AuthResponse userGet = await supabase.client.auth.signInWithPassword(
-        password : password, 
-        email: email
-        );
-
-        User user = userGet.user!;
-
-      return LocalUser.fromSupabase(user);
+      final response = await _client.auth.signInWithPassword(
+        email: email.trim(),
+        password: password,
+      );
+      return response.user;
+    } on AuthException catch (e) {
+      print('❌ Login error: ${e.message}');
+      rethrow; // чтобы ловить в UI
     } catch (e) {
-      return null;
+      print('❌ Unexpected login error: $e');
+      rethrow;
     }
   }
 
-    Future<LocalUser?> singUp(String email, String password)async{
+  /// Регистрация нового пользователя
+  Future<User?> singUp(String email, String password, {String? username}) async {
     try {
+      final response = await _client.auth.signUp(
+        email: email.trim(),
+        password: password,
+        data: {
+          'username': username?.trim() ?? email.split('@')[0],
+        },
+      );
 
-      AuthResponse userGet = await supabase.client.auth.signUp(
-        password : password, 
-        email: email
-        );
-
-        User user = userGet.user!;
-
-      return LocalUser.fromSupabase(user);
+      return response.user;
+    } on AuthException catch (e) {
+      print('❌ Register error: ${e.message}');
+      rethrow;
     } catch (e) {
-      return null;
+      print('❌ Unexpected register error: $e');
+      rethrow;
     }
   }
 
-  Future logOut()async{
-    try{
-      await supabase.client.auth.signOut();
-    } catch (e) {
-      return;
-    }
+  /// Выход
+  Future<void> signOut() async {
+    await _client.auth.signOut();
   }
 
-  Future recoveryPassword(String email) async {
-    try {
-      await supabase.client.auth.resetPasswordForEmail(email);
-    } catch (e) {
-      return;
-    }
-  }
+  User? get currentUser => _client.auth.currentUser;
+
+  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 }
