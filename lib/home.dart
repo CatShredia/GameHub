@@ -21,7 +21,7 @@ class _HomePageState extends State<HomePage> {
   final List<Widget> _screens = [
     const BottomHome(),
     const BottomFeed(),
-    const BottomShop(),
+    const ShopPage(),
     const BottomAuction(),
     const BottomChat(),
     const BottomProfile(),
