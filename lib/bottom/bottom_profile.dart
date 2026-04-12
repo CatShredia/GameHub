@@ -1,11 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../database/services/profile_service.dart';
 import 'mini_page/auctions_list_page.dart';
 import 'mini_page/edit_profile_page.dart';
 import 'mini_page/reate_auction_page.dart';
 
+// ? Страница профиля пользователя
 class BottomProfile extends StatefulWidget {
   const BottomProfile({super.key});
 
@@ -27,6 +30,7 @@ class _BottomProfileState extends State<BottomProfile> {
     _loadProfile();
   }
 
+  // ? Загружает данные профиля с таймаутом
   Future<void> _loadProfile() async {
     try {
       final userAuth = Supabase.instance.client.auth.currentUser;
@@ -40,10 +44,12 @@ class _BottomProfileState extends State<BottomProfile> {
 
       debugPrint('🔄 Загрузка профиля: ${userAuth.id}');
 
-      final data = await _profileService.getProfileData(userAuth.id).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw TimeoutException('Сервер не отвечает'),
-      );
+      final data = await _profileService
+          .getProfileData(userAuth.id)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw TimeoutException('Сервер не отвечает'),
+          );
 
       if (mounted) {
         debugPrint('✅ Профиль загружен: ${data['user']['username']}');
@@ -63,6 +69,7 @@ class _BottomProfileState extends State<BottomProfile> {
     }
   }
 
+  // ? Обрабатывает ошибку загрузки
   void _handleError(String message) {
     if (mounted) {
       setState(() {
@@ -72,6 +79,7 @@ class _BottomProfileState extends State<BottomProfile> {
     }
   }
 
+  // ? Загружает уведомления пользователя
   Future<void> _loadNotifications() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -79,7 +87,7 @@ class _BottomProfileState extends State<BottomProfile> {
 
       setState(() => _notificationsLoading = true);
       _notifications = await _profileService.getNotifications(user.id);
-      
+
       if (mounted) {
         setState(() => _notificationsLoading = false);
       }
@@ -90,6 +98,7 @@ class _BottomProfileState extends State<BottomProfile> {
     }
   }
 
+  // ? Показывает bottom sheet с уведомлениями
   void _showNotificationsBottomSheet() {
     setState(() => _notifications = []);
     _loadNotifications();
@@ -112,14 +121,21 @@ class _BottomProfileState extends State<BottomProfile> {
                 children: [
                   const Text(
                     '🔔 Уведомления',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   TextButton(
                     onPressed: _notifications.isNotEmpty
                         ? () async {
-                            final user = Supabase.instance.client.auth.currentUser;
+                            final user =
+                                Supabase.instance.client.auth.currentUser;
                             if (user != null) {
-                              await _profileService.markAllNotificationsAsRead(user.id);
+                              await _profileService.markAllNotificationsAsRead(
+                                user.id,
+                              );
                               setModalState(() {
                                 for (var n in _notifications) {
                                   n['is_watched'] = true;
@@ -128,61 +144,85 @@ class _BottomProfileState extends State<BottomProfile> {
                             }
                           }
                         : null,
-                    child: const Text('Все проч.', style: TextStyle(color: Color(0xFF7C3AED))),
+                    child: const Text(
+                      'Все проч.',
+                      style: TextStyle(color: Color(0xFF7C3AED)),
+                    ),
                   ),
                 ],
               ),
               const Divider(color: Colors.white24),
               _notificationsLoading
-                  ? const Expanded(child: Center(child: CircularProgressIndicator()))
+                  ? const Expanded(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
                   : _notifications.isEmpty
-                      ? const Expanded(
-                          child: Center(
-                            child: Text('Нет новых уведомлений', style: TextStyle(color: Colors.grey)),
-                          ),
-                        )
-                      : Expanded(
-                          child: ListView.separated(
-                            itemCount: _notifications.length,
-                            separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
-                            itemBuilder: (context, index) {
-                              final notif = _notifications[index];
-                              final isRead = notif['is_watched'] == true;
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: CircleAvatar(
-                                  backgroundColor: isRead ? Colors.grey.withOpacity(0.3) : const Color(0xFF7C3AED),
-                                  child: Text(!isRead ? '•' : '✓', style: const TextStyle(color: Colors.white)),
-                                ),
-                                title: Text(
-                                  notif['title'] ?? 'Без заголовка',
-                                  style: TextStyle(
-                                    fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  notif['content'] ?? '',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                                ),
-                                trailing: Text(
-                                  _formatDate(notif['created_at']),
-                                  style: const TextStyle(color: Colors.grey, fontSize: 10),
-                                ),
-                                onTap: () async {
-                                  await _profileService.markNotificationAsRead(notif['id']);
-                                  setModalState(() {
-                                    _notifications[index]['is_watched'] = true;
-                                  });
-                                },
-                              );
-                            },
-                          ),
+                  ? const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Нет новых уведомлений',
+                          style: TextStyle(color: Colors.grey),
                         ),
+                      ),
+                    )
+                  : Expanded(
+                      child: ListView.separated(
+                        itemCount: _notifications.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(color: Colors.white12, height: 1),
+                        itemBuilder: (context, index) {
+                          final notif = _notifications[index];
+                          final isRead = notif['is_watched'] == true;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              backgroundColor: isRead
+                                  ? Colors.grey.withOpacity(0.3)
+                                  : const Color(0xFF7C3AED),
+                              child: Text(
+                                !isRead ? '•' : '✓',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            title: Text(
+                              notif['title'] ?? 'Без заголовка',
+                              style: TextStyle(
+                                fontWeight: isRead
+                                    ? FontWeight.normal
+                                    : FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              notif['content'] ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                            trailing: Text(
+                              _formatDate(notif['created_at']),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                              ),
+                            ),
+                            onTap: () async {
+                              await _profileService.markNotificationAsRead(
+                                notif['id'],
+                              );
+                              setModalState(() {
+                                _notifications[index]['is_watched'] = true;
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
             ],
           ),
         ),
@@ -190,6 +230,7 @@ class _BottomProfileState extends State<BottomProfile> {
     );
   }
 
+  // ? Форматирует дату в читаемый вид
   String _formatDate(String? dateStr) {
     if (dateStr == null) return '';
     try {
@@ -204,6 +245,7 @@ class _BottomProfileState extends State<BottomProfile> {
     }
   }
 
+  // ? Склоняет существительные по числам
   String _pluralize(int num, String one, String two, String five) {
     final mod = num % 10;
     if (num % 100 >= 11 && num % 100 <= 14) return five;
@@ -227,7 +269,9 @@ class _BottomProfileState extends State<BottomProfile> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadProfile,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+              ),
               child: const Text('Повторить'),
             ),
           ],
@@ -240,7 +284,7 @@ class _BottomProfileState extends State<BottomProfile> {
     final activeAuctions = _profileData!['activeAuctions'] as int;
     final completedAuctions = _profileData!['completedAuctions'] as int;
     final rating = _profileData!['rating'] as double;
-    final points = _profileData!['points'] as int? ?? 0; // 👈 Очки пользователя
+    final points = _profileData!['points'] as int? ?? 0;
     final joinedAt = DateTime.parse(_profileData!['joinedAt']);
     final yearsOnPlatform = DateTime.now().difference(joinedAt).inDays ~/ 365;
 
@@ -249,32 +293,37 @@ class _BottomProfileState extends State<BottomProfile> {
         children: [
           const SizedBox(height: 60),
 
-          // 👤 Avatar + Points Badge
+          // ? Аватар с бейджем очков
           Stack(
             alignment: Alignment.bottomRight,
             children: [
               CircleAvatar(
                 radius: 45,
                 backgroundColor: const Color(0xFF7C3AED),
-                child: user['avatar'] != null && user['avatar'].toString().isNotEmpty
+                child:
+                    user['avatar'] != null &&
+                        user['avatar'].toString().isNotEmpty
                     ? ClipOval(
                         child: Image.network(
                           user['avatar'],
                           width: 90,
                           height: 90,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Text("😎", style: TextStyle(fontSize: 50)),
+                          errorBuilder: (_, __, ___) =>
+                              const Text('😎', style: TextStyle(fontSize: 50)),
                           loadingBuilder: (_, child, progress) {
                             if (progress == null) return child;
                             return const CircularProgressIndicator();
                           },
                         ),
                       )
-                    : const Text("😎", style: TextStyle(fontSize: 50)),
+                    : const Text('😎', style: TextStyle(fontSize: 50)),
               ),
-              // 🏆 Badge с очками
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
@@ -310,38 +359,43 @@ class _BottomProfileState extends State<BottomProfile> {
           const SizedBox(height: 12),
           Text(
             user['username'] ?? 'Пользователь',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
             textAlign: TextAlign.center,
           ),
           Text(
-            '@${user['login'] ?? 'no_login'} • $yearsOnPlatform ${_pluralize(yearsOnPlatform, 'год', 'года', 'лет')}',
+            '@${user['login'] ?? 'no_login'} • '
+            '$yearsOnPlatform ${_pluralize(yearsOnPlatform, 'год', 'года', 'лет')}',
             style: const TextStyle(color: Colors.grey, fontSize: 13),
             textAlign: TextAlign.center,
           ),
 
           const SizedBox(height: 24),
 
-          // 📊 Stats (обновлённые)
+          // ? Статистика профиля
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _ProfileStat(
-                value: "$points", 
-                label: "Очков",
+                value: '$points',
+                label: 'Очков',
                 icon: Icons.star,
                 color: Colors.orange,
               ),
               const SizedBox(width: 30),
               _ProfileStat(
-                value: "$activeAuctions", 
-                label: "Аукционов",
+                value: '$activeAuctions',
+                label: 'Аукционов',
                 icon: Icons.gavel,
                 color: const Color(0xFF7C3AED),
               ),
               const SizedBox(width: 30),
               _ProfileStat(
-                value: rating.toString(), 
-                label: "Рейтинг",
+                value: rating.toString(),
+                label: 'Рейтинг',
                 icon: Icons.star_border,
                 color: Colors.yellow,
               ),
@@ -350,7 +404,7 @@ class _BottomProfileState extends State<BottomProfile> {
 
           const SizedBox(height: 30),
 
-          // 🔘 Buttons
+          // ? Кнопки редактирования и «Поделиться»
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -371,22 +425,24 @@ class _BottomProfileState extends State<BottomProfile> {
                           ),
                         ),
                       );
-                      
+
                       if (result != null && mounted) {
                         setState(() {
-                          _profileData = {
-                            ..._profileData!,
-                            'user': result,
-                          };
+                          _profileData = {..._profileData!, 'user': result};
                         });
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF7C3AED),
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    child: const Text("✏️ Редактировать", style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      '✏️ Редактировать',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -394,15 +450,22 @@ class _BottomProfileState extends State<BottomProfile> {
                   child: OutlinedButton(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('📤 Скопировано: @${user['login']}')),
+                        SnackBar(
+                          content: Text('📤 Скопировано: @${user['login']}'),
+                        ),
                       );
                     },
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.white24),
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    child: const Text("📤 Поделиться", style: TextStyle(color: Colors.white)),
+                    child: const Text(
+                      '📤 Поделиться',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ],
@@ -411,11 +474,11 @@ class _BottomProfileState extends State<BottomProfile> {
 
           const SizedBox(height: 30),
 
-          // 🧭 Menu
+          // ? Меню профиля
           _ProfileMenuItem(
-            icon: "➕",
-            title: "Создать аукцион",
-            subtitle: "Выставь игру на продажу",
+            icon: '➕',
+            title: 'Создать аукцион',
+            subtitle: 'Выставь игру на продажу',
             onTap: () {
               Navigator.push(
                 context,
@@ -426,9 +489,10 @@ class _BottomProfileState extends State<BottomProfile> {
             },
           ),
           _ProfileMenuItem(
-            icon: "🔨",
-            title: "Мои аукционы",
-            subtitle: "$activeAuctions активных, $completedAuctions завершённых",
+            icon: '🔨',
+            title: 'Мои аукционы',
+            subtitle:
+                '$activeAuctions активных, $completedAuctions завершённых',
             onTap: () {
               Navigator.push(
                 context,
@@ -439,31 +503,42 @@ class _BottomProfileState extends State<BottomProfile> {
             },
           ),
           _ProfileMenuItem(
-            icon: "🔔",
-            title: "Уведомления",
-            subtitle: "История оповещений",
+            icon: '🔔',
+            title: 'Уведомления',
+            subtitle: 'История оповещений',
             onTap: _showNotificationsBottomSheet,
           ),
           _ProfileMenuItem(
-            icon: "🚪",
-            title: "Выйти",
-            subtitle: "Выход из аккаунта",
+            icon: '🚪',
+            title: 'Выйти',
+            subtitle: 'Выход из аккаунта',
             isLogout: true,
             onTap: () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
                   backgroundColor: const Color(0xFF1A1A2E),
-                  title: const Text('Выход', style: TextStyle(color: Colors.white)),
-                  content: const Text('Вы уверены?', style: TextStyle(color: Colors.grey)),
+                  title: const Text(
+                    'Выход',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  content: const Text(
+                    'Вы уверены?',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+                      child: const Text(
+                        'Отмена',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     ),
                     ElevatedButton(
                       onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
                       child: const Text('Выйти'),
                     ),
                   ],
@@ -472,7 +547,9 @@ class _BottomProfileState extends State<BottomProfile> {
               if (confirm == true && mounted) {
                 await _profileService.signOut();
                 if (mounted) {
-                  Navigator.of(context).pushNamedAndRemoveUntil('/auth', (route) => false);
+                  Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/auth', (route) => false);
                 }
               }
             },
@@ -483,38 +560,48 @@ class _BottomProfileState extends State<BottomProfile> {
   }
 }
 
-// ===== Вспомогательные виджеты =====
-
+// ? Элемент статистики в профиле
 class _ProfileStat extends StatelessWidget {
-  final String value, label;
+  final String value;
+  final String label;
   final IconData icon;
   final Color color;
-  
+
   const _ProfileStat({
-    required this.value, 
+    required this.value,
     required this.label,
     required this.icon,
     required this.color,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
       ],
     );
   }
 }
 
+// ? Пункт меню профиля
 class _ProfileMenuItem extends StatelessWidget {
-  final String icon, title, subtitle;
+  final String icon;
+  final String title;
+  final String subtitle;
   final bool isLogout;
   final VoidCallback? onTap;
-  
+
   const _ProfileMenuItem({
     required this.icon,
     required this.title,
@@ -522,7 +609,7 @@ class _ProfileMenuItem extends StatelessWidget {
     this.isLogout = false,
     this.onTap,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -533,18 +620,23 @@ class _ProfileMenuItem extends StatelessWidget {
         height: 42,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: isLogout ? Colors.red.withOpacity(0.15) : const Color(0xFF7C3AED).withOpacity(0.15),
+          color: isLogout
+              ? Colors.red.withOpacity(0.15)
+              : const Color(0xFF7C3AED).withOpacity(0.15),
         ),
         child: Center(child: Text(icon, style: const TextStyle(fontSize: 22))),
       ),
       title: Text(
-        title, 
-        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        subtitle, 
+        subtitle,
         style: const TextStyle(color: Colors.grey, fontSize: 12),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

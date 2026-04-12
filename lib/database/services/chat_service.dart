@@ -1,23 +1,24 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabase = Supabase.instance.client;
 
-/// Сервис для работы с чатами через Supabase Realtime (WebSocket).
+// ? Сервис для работы с чатами через Supabase Realtime (WebSocket)
 class ChatService {
-  // ===== Одиночка =====
+  // ? Одиночка — единственный экземпляр на всё приложение
   static final ChatService _instance = ChatService._internal();
   factory ChatService() => _instance;
   ChatService._internal();
 
-  // ===== Стрим сообщений =====
+  // ===== Стримы сообщений =====
   final Map<String, StreamController<List<Map<String, dynamic>>>> _msgStreams =
       {};
   final Map<String, RealtimeChannel> _msgChannels = {};
   final Map<String, List<Map<String, dynamic>>> _lastMessages = {};
 
-  /// Возвращает стрим сообщений для конкретного чата.
+  // ? Возвращает стрим сообщений для конкретного чата с Realtime-обновлениями
   Stream<List<Map<String, dynamic>>> messagesStream(dynamic chatId) {
     final key = chatId.toString();
     if (_msgStreams.containsKey(key)) {
@@ -25,9 +26,7 @@ class ChatService {
     }
 
     final controller = StreamController<List<Map<String, dynamic>>>.broadcast(
-      onCancel: () {
-        _unsubscribeMessages(key);
-      },
+      onCancel: () => _unsubscribeMessages(key),
     );
 
     _msgStreams[key] = controller;
@@ -36,6 +35,7 @@ class ChatService {
     return controller.stream;
   }
 
+  // ? Загружает начальные сообщения и подписывается на Realtime-изменения
   Future<void> _subscribeMessages(
     String chatKey,
     StreamController<List<Map<String, dynamic>>> controller,
@@ -61,7 +61,7 @@ class ChatService {
       return;
     }
 
-    // Подписка на Realtime
+    // ? Подписка на Realtime-изменения таблицы Message
     debugPrint('ChatService: создаю канал msg:$chatKey');
     final channel = supabase
         .channel('msg:$chatKey')
@@ -145,6 +145,7 @@ class ChatService {
     _msgChannels[chatKey] = channel;
   }
 
+  // ? Отписывается от Realtime-канала сообщений чата
   void _unsubscribeMessages(String chatKey) {
     debugPrint('ChatService: отписка от сообщений chatKey=$chatKey');
     _msgChannels[chatKey]?.unsubscribe();
@@ -158,11 +159,13 @@ class ChatService {
       StreamController<List<Map<String, dynamic>>>.broadcast();
   RealtimeChannel? _chatsChannel;
 
+  // ? Возвращает стрим списка чатов пользователя с Realtime-обновлениями
   Stream<List<Map<String, dynamic>>> get chatsStream {
     _initChatsStream();
     return _chatsController.stream;
   }
 
+  // ? Инициализирует Realtime-подписку на чаты пользователя
   Future<void> _initChatsStream() async {
     if (_chatsChannel != null) return;
 
@@ -183,7 +186,7 @@ class ChatService {
       return;
     }
 
-    // Уникальное имя канала для каждого пользователя
+    // ? Уникальное имя канала для каждого пользователя
     final channelName = 'chats:$userId';
     debugPrint('ChatService: создаю канал $channelName');
 
@@ -236,9 +239,10 @@ class ChatService {
         });
   }
 
+  // ? Загружает чаты пользователя с последними сообщениями
   Future<void> _loadUserChats() async {
     final user = supabase.auth.currentUser;
-    debugPrint('ChatService: загрузка чатов, user=${user?.id ?? "null"}');
+    debugPrint('ChatService: загрузка чатов, user=${user?.id ?? 'null'}');
 
     if (user == null) {
       if (!_chatsController.isClosed && _chatsController.hasListener) {
@@ -293,8 +297,10 @@ class ChatService {
     }
   }
 
+  // ? Обновляет список чатов вручную (pull-to-refresh)
   Future<void> refreshChats() => _loadUserChats();
 
+  // ? Отправляет сообщение в чат
   Future<void> sendMessage({
     required dynamic chatId,
     required String content,
@@ -312,6 +318,7 @@ class ChatService {
     });
   }
 
+  // ? Создаёт приватный чат с другим пользователем
   Future<Map<String, dynamic>?> createPrivateChat(String targetLogin) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return null;
@@ -339,6 +346,7 @@ class ChatService {
     return newChat;
   }
 
+  // ? Закрывает все Realtime-подписки и стримы
   void disposeAll() {
     for (final key in _msgChannels.keys) {
       _msgChannels[key]?.unsubscribe();

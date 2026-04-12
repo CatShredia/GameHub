@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'database/services/userservice.dart';
 
+// ? Страница восстановления пароля
 class RecoveryPage extends StatefulWidget {
   const RecoveryPage({super.key});
 
@@ -20,13 +22,15 @@ class _RecoveryPageState extends State<RecoveryPage> {
     super.dispose();
   }
 
+  // ? Показывает всплывающее уведомление
   Future<void> _showMessage(String message) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ? Отправляет письмо для восстановления пароля
   Future<void> _resetPassword() async {
     final email = _emailController.text.trim();
 
@@ -117,7 +121,9 @@ class _RecoveryPageState extends State<RecoveryPage> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
                 ),
                 onPressed: _isLoading ? null : _resetPassword,
                 child: Text(
@@ -134,7 +140,10 @@ class _RecoveryPageState extends State<RecoveryPage> {
             const SizedBox(height: 20),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Назад', style: TextStyle(color: Colors.blue, fontSize: 16)),
+              child: const Text(
+                'Назад',
+                style: TextStyle(color: Colors.blue, fontSize: 16),
+              ),
             ),
           ],
         ),

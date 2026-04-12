@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UserTable {
   final SupabaseClient _client = Supabase.instance.client;
 
+  // ? Описание
   Future<void> addUserTable({
     required String userId,
     required String username,
@@ -16,21 +18,25 @@ class UserTable {
         'username': username,
         'email': email,
         'login': username.toLowerCase(),
-        'password': '', // Supabase Auth хранит пароль сам, сюда лучше не писать
-        'username': username,
+        'password': '',
         'avatar': avatar ?? '',
         'scope': 0,
       });
     } catch (e) {
-      print('Ошибка при создании профиля пользователя: $e');
+      debugPrint('Ошибка при создании профиля пользователя: $e');
     }
   }
 
+  // ? Описание
   Future<void> updateAvatar(String userId, String avatarUrl) async {
     await _client.from('User').update({'avatar': avatarUrl}).eq('id', userId);
   }
 
+  // ? Описание
   Future<void> updateUsername(String userId, String newUsername) async {
-    await _client.from('User').update({'username': newUsername}).eq('id', userId);
+    await _client
+        .from('User')
+        .update({'username': newUsername})
+        .eq('id', userId);
   }
 }

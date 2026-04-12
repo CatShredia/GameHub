@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:nav_bar/nav_bar.dart';
 
-import 'bottom/bottom_home.dart';
-import 'bottom/bottom_feed.dart';
-import 'bottom/bottom_shop.dart';
 import 'bottom/bottom_auction.dart';
 import 'bottom/bottom_chat.dart';
+import 'bottom/bottom_feed.dart';
+import 'bottom/bottom_home.dart';
 import 'bottom/bottom_profile.dart';
+import 'bottom/bottom_shop.dart';
 
+// ? Главная страница с навигационной панелью
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -26,6 +27,7 @@ class _HomePageState extends State<HomePage> {
     const BottomChat(),
     const BottomProfile(),
   ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,7 +51,7 @@ class _HomePageState extends State<HomePage> {
         iconAnimationType: IconAnimationType.fade,
         showGlow: true,
         showLiquid: true,
-        iconLabelSpacing: 0.0, // ← основное изменение
+        iconLabelSpacing: 0.0,
       ),
     );
   }

@@ -7,6 +7,7 @@ import 'mini_page/chat_screen.dart';
 
 final supabase = Supabase.instance.client;
 
+// ? Страница списка чатов пользователя
 class BottomChat extends StatefulWidget {
   const BottomChat({super.key});
 
@@ -15,9 +16,9 @@ class BottomChat extends StatefulWidget {
 }
 
 class _BottomChatState extends State<BottomChat> {
-  final ChatService _chatService = ChatService();
-  final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _createController = TextEditingController();
+  final _chatService = ChatService();
+  final _searchController = TextEditingController();
+  final _createController = TextEditingController();
 
   @override
   void initState() {
@@ -29,6 +30,7 @@ class _BottomChatState extends State<BottomChat> {
     setState(() {});
   }
 
+  // ? Создаёт новый приватный чат по логину пользователя
   Future<void> _createPrivateChat() async {
     final login = _createController.text.trim();
     if (login.isEmpty) return;
@@ -60,6 +62,7 @@ class _BottomChatState extends State<BottomChat> {
     }
   }
 
+  // ? Обновляет список чатов вручную
   Future<void> _refreshChats() async {
     await _chatService.refreshChats();
   }
@@ -76,7 +79,7 @@ class _BottomChatState extends State<BottomChat> {
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 60, 20, 16),
               child: Text(
-                "💬 Чаты",
+                '💬 Чаты',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
@@ -85,7 +88,7 @@ class _BottomChatState extends State<BottomChat> {
               ),
             ),
 
-            // Поиск + кнопка создания
+            // ? Поле поиска и кнопка создания чата
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -109,7 +112,7 @@ class _BottomChatState extends State<BottomChat> {
                               controller: _searchController,
                               style: const TextStyle(color: Colors.white),
                               decoration: const InputDecoration(
-                                hintText: "Поиск чатов...",
+                                hintText: 'Поиск чатов...',
                                 hintStyle: TextStyle(color: Colors.grey),
                                 border: InputBorder.none,
                               ),
@@ -127,20 +130,20 @@ class _BottomChatState extends State<BottomChat> {
                         builder: (ctx) => AlertDialog(
                           backgroundColor: const Color(0xFF1A1430),
                           title: const Text(
-                            "Новый чат",
+                            'Новый чат',
                             style: TextStyle(color: Colors.white),
                           ),
                           content: TextField(
                             controller: _createController,
                             style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
-                              hintText: "Логин пользователя",
+                              hintText: 'Логин пользователя',
                             ),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
-                              child: const Text("Отмена"),
+                              child: const Text('Отмена'),
                             ),
                             TextButton(
                               onPressed: () {
@@ -148,7 +151,7 @@ class _BottomChatState extends State<BottomChat> {
                                 _createPrivateChat();
                               },
                               child: const Text(
-                                "Создать",
+                                'Создать',
                                 style: TextStyle(color: Color(0xFF7C3AED)),
                               ),
                             ),
@@ -168,7 +171,7 @@ class _BottomChatState extends State<BottomChat> {
 
             const SizedBox(height: 20),
 
-            // Список чатов через StreamBuilder
+            // ? Список чатов через StreamBuilder с Realtime-обновлениями
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: _chatService.chatsStream,
               builder: (context, snapshot) {
@@ -219,12 +222,12 @@ class _BottomChatState extends State<BottomChat> {
                           ),
                           SizedBox(height: 20),
                           Text(
-                            "Пока нет чатов",
+                            'Пока нет чатов',
                             style: TextStyle(fontSize: 20, color: Colors.grey),
                           ),
                           SizedBox(height: 8),
                           Text(
-                            "Создайте новый чат с помощью кнопки +",
+                            'Создайте новый чат с помощью кнопки +',
                             style: TextStyle(color: Colors.grey, fontSize: 15),
                           ),
                         ],
@@ -294,7 +297,7 @@ class _BottomChatState extends State<BottomChat> {
   }
 }
 
-// ====================== Виджет чата ======================
+// ? Виджет отдельного элемента чата в списке
 class _ChatItem extends StatelessWidget {
   final String name, lastMsg, time, avatar;
   final VoidCallback? onTap;

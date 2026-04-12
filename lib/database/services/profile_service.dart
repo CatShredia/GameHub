@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileService {
   final _client = Supabase.instance.client;
 
+  // ? Описание
   Future<Map<String, dynamic>> getProfileData(String userId) async {
     final user = await _client
         .from('User')
@@ -14,17 +16,14 @@ class ProfileService {
       throw Exception('Профиль не найден в базе данных');
     }
 
-    final posts = await _client
-        .from('Post')
-        .select('id')
-        .eq('user_id', userId);
+    final posts = await _client.from('Post').select('id').eq('user_id', userId);
     final postsCount = posts.length;
 
     final auctions = await _client
         .from('Auction_items')
         .select('id, is_active')
         .eq('owner_id', userId);
-    
+
     final activeAuctions = auctions.where((a) => a['is_active'] == true).length;
     final completedAuctions = auctions.length - activeAuctions;
 
@@ -38,6 +37,7 @@ class ProfileService {
     };
   }
 
+  // ? Описание
   Future<List<Map<String, dynamic>>> getNotifications(String userId) async {
     try {
       final response = await _client
@@ -46,14 +46,15 @@ class ProfileService {
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .limit(50);
-      
+
       return response;
     } catch (e) {
-      print('❌ Ошибка загрузки уведомлений: $e');
+      debugPrint('Ошибка загрузки уведомлений: $e');
       return [];
     }
   }
 
+  // ? Описание
   Future<void> markNotificationAsRead(String notificationId) async {
     try {
       await _client
@@ -61,10 +62,11 @@ class ProfileService {
           .update({'is_watched': true})
           .eq('id', notificationId);
     } catch (e) {
-      print('❌ Ошибка обновления уведомления: $e');
+      debugPrint('Ошибка обновления уведомления: $e');
     }
   }
 
+  // ? Описание
   Future<void> markAllNotificationsAsRead(String userId) async {
     try {
       await _client
@@ -73,10 +75,11 @@ class ProfileService {
           .eq('user_id', userId)
           .eq('is_watched', false);
     } catch (e) {
-      print('❌ Ошибка обновления всех уведомлений: $e');
+      debugPrint('Ошибка обновления всех уведомлений: $e');
     }
   }
 
+  // ? Описание
   Future<void> signOut() async {
     await _client.auth.signOut();
   }

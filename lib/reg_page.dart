@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'database/service.dart';
-import 'auth_page.dart';
-import 'home.dart';
 
+import 'auth_page.dart';
+import 'database/service.dart';
+
+// ? Страница регистрации нового пользователя
 class RegPage extends StatefulWidget {
   const RegPage({super.key});
 
@@ -12,75 +13,81 @@ class RegPage extends StatefulWidget {
 }
 
 class _RegPageState extends State<RegPage> {
-  final emailController = TextEditingController();
-  final passController = TextEditingController();
-  final repeatPassController = TextEditingController();
-  final usernameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passController = TextEditingController();
+  final _repeatPassController = TextEditingController();
+  final _usernameController = TextEditingController();
 
-  final AuthServices authService = AuthServices();
+  final _authService = AuthServices();
   bool _isLoading = false;
 
   @override
   void dispose() {
-    emailController.dispose();
-    passController.dispose();
-    repeatPassController.dispose();
-    usernameController.dispose();
+    _emailController.dispose();
+    _passController.dispose();
+    _repeatPassController.dispose();
+    _usernameController.dispose();
     super.dispose();
   }
 
+  // ? Выполняет регистрацию пользователя
   Future<void> _register() async {
-    if (usernameController.text.isEmpty ||
-        emailController.text.isEmpty ||
-        passController.text.isEmpty ||
-        repeatPassController.text.isEmpty) {
-      _showSnackBar("Заполните все поля!", Colors.redAccent);
+    if (_usernameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _passController.text.isEmpty ||
+        _repeatPassController.text.isEmpty) {
+      _showSnackBar('Заполните все поля!', Colors.redAccent);
       return;
     }
 
-    if (passController.text != repeatPassController.text) {
-      _showSnackBar("Пароли не совпадают!", Colors.redAccent);
+    if (_passController.text != _repeatPassController.text) {
+      _showSnackBar('Пароли не совпадают!', Colors.redAccent);
       return;
     }
 
-    if (passController.text.length < 6) {
-      _showSnackBar("Пароль должен быть не менее 6 символов", Colors.redAccent);
+    if (_passController.text.length < 6) {
+      _showSnackBar('Пароль должен быть не менее 6 символов', Colors.redAccent);
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final user = await authService.singUp(
-        emailController.text.trim(),
-        passController.text,
-        username: usernameController.text.trim(),
+      final user = await _authService.signUp(
+        _emailController.text.trim(),
+        _passController.text,
+        username: _usernameController.text.trim(),
       );
 
       if (user != null && mounted) {
         debugPrint('✅ Регистрация успешна: ${user.email}');
 
-        // Если подтверждение email отключено в Supabase — сразу заходим
         if (user.emailConfirmedAt != null) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/home', (route) => false);
         } else {
-          _showSnackBar("Регистрация успешна! Проверьте почту для подтверждения.", Colors.green);
-          Navigator.pop(context); // возвращаемся на экран входа
+          _showSnackBar(
+            'Регистрация успешна! Проверьте почту для подтверждения.',
+            Colors.green,
+          );
+          Navigator.pop(context);
         }
       }
     } on AuthException catch (e) {
       String msg = e.message;
       if (msg.contains('already registered')) {
-        msg = "Пользователь с таким email уже существует";
+        msg = 'Пользователь с таким email уже существует';
       }
       if (mounted) _showSnackBar(msg, Colors.redAccent);
     } catch (e) {
-      if (mounted) _showSnackBar("Ошибка: $e", Colors.redAccent);
+      if (mounted) _showSnackBar('Ошибка: $e', Colors.redAccent);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ? Показывает всплывающее уведомление
   void _showSnackBar(String message, Color bgColor) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -112,17 +119,35 @@ class _RegPageState extends State<RegPage> {
             children: [
               const Text(
                 '🚀 Регистрация',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 40),
 
-              _buildTextField(usernameController, 'Имя пользователя', Icons.person),
+              _buildTextField(
+                _usernameController,
+                'Имя пользователя',
+                Icons.person,
+              ),
               const SizedBox(height: 16),
-              _buildTextField(emailController, 'Email', Icons.email),
+              _buildTextField(_emailController, 'Email', Icons.email),
               const SizedBox(height: 16),
-              _buildTextField(passController, 'Пароль', Icons.lock, obscureText: true),
+              _buildTextField(
+                _passController,
+                'Пароль',
+                Icons.lock,
+                obscureText: true,
+              ),
               const SizedBox(height: 16),
-              _buildTextField(repeatPassController, 'Повторите пароль', Icons.lock, obscureText: true),
+              _buildTextField(
+                _repeatPassController,
+                'Повторите пароль',
+                Icons.lock,
+                obscureText: true,
+              ),
               const SizedBox(height: 32),
 
               SizedBox(
@@ -132,15 +157,29 @@ class _RegPageState extends State<RegPage> {
                   onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF7C3AED),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                   child: _isLoading
                       ? const SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
                         )
-                      : const Text('Зарегистрироваться', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
+                      : const Text(
+                          'Зарегистрироваться',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
 
@@ -148,10 +187,19 @@ class _RegPageState extends State<RegPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Уже есть аккаунт? ", style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    'Уже есть аккаунт? ',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text("Войти", style: TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Войти',
+                      style: TextStyle(
+                        color: Color(0xFF7C3AED),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -162,7 +210,13 @@ class _RegPageState extends State<RegPage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool obscureText = false}) {
+  // ? Создаёт текстовое поле ввода
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool obscureText = false,
+  }) {
     return TextField(
       controller: controller,
       obscureText: obscureText,
@@ -174,7 +228,10 @@ class _RegPageState extends State<RegPage> {
         prefixIcon: Icon(icon, color: Colors.grey),
         filled: true,
         fillColor: const Color(0xFF1A1A2E),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 2),

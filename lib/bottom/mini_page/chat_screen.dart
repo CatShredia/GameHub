@@ -1,4 +1,3 @@
-// chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -7,6 +6,7 @@ import '../../database/services/chat_service.dart';
 
 final supabase = Supabase.instance.client;
 
+// ? Экран отдельного чата с сообщениями в реальном времени
 class ChatScreen extends StatefulWidget {
   final int chatId;
   final String chatName;
@@ -18,15 +18,11 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final ChatService _chatService = ChatService();
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _chatService = ChatService();
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
+  // ? Отправляет сообщение в текущий чат
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -44,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ? Прокручивает список сообщений вниз
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -75,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          // ? Стрим сообщений с Realtime-обновлениями
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _chatService.messagesStream(widget.chatId),
@@ -158,7 +156,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // Поле ввода
+          // ? Поле ввода сообщения
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
             decoration: BoxDecoration(

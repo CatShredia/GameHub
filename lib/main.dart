@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'check.dart';
+
 import 'auth_page.dart';
+import 'check.dart';
 import 'forgot_password.dart';
 import 'home.dart';
 import 'reg_page.dart';
 
+// ? Инициализация приложения и Supabase-клиента
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Supabase.initialize(
     url: 'https://tvjggbkxmgbdtcfxggza.supabase.co',
     anonKey: 'sb_publishable_Kp7LtHGXD6zG4wLU_9B01Q_499L7I0V',
   );
+
   runApp(const MainApp());
 }
 
+// ? Корневой виджет приложения с настройкой темы и маршрутов
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 

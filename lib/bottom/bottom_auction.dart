@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'mini_page/reate_auction_page.dart';
 
+// ? Страница аукционов с live-аукционами и ближайшими
 class BottomAuction extends StatefulWidget {
   const BottomAuction({super.key});
 
@@ -21,6 +23,7 @@ class _BottomAuctionState extends State<BottomAuction> {
     _loadAuctions();
   }
 
+  // ? Загружает live-аукцион и ближайшие аукционы
   Future<void> _loadAuctions() async {
     try {
       setState(() {
@@ -31,29 +34,29 @@ class _BottomAuctionState extends State<BottomAuction> {
       final client = Supabase.instance.client;
       final now = DateTime.now().toIso8601String();
 
-      // 🔴 LIVE аукционы
+      // ? LIVE аукцион — один активный с ближайшим окончанием
       final liveResponse = await client
-          .from('Auction_items') // ← Здесь было 'auction_items' (маленькая 'a')
+          .from('Auction_items')
           .select('''
-      id,
-      title,
-      url_item,
-      start_price,
-      bid_count,
-      ended_at,
-      is_active,
-      owner_id,
-      User!auction_items_owner_id_fkey (
-        username,
-        login
-      )
-    ''')
+            id,
+            title,
+            url_item,
+            start_price,
+            bid_count,
+            ended_at,
+            is_active,
+            owner_id,
+            User!auction_items_owner_id_fkey (
+              username,
+              login
+            )
+          ''')
           .eq('is_active', true)
           .gt('ended_at', now)
           .order('ended_at', ascending: true)
           .limit(1);
 
-      // ⏳ Ближайшие аукционы
+      // ? Ближайшие аукционы — до 4 штук
       final upcomingResponse = await client
           .from('Auction_items')
           .select('''
@@ -92,6 +95,7 @@ class _BottomAuctionState extends State<BottomAuction> {
     }
   }
 
+  // ? Форматирует число очков с пробелами
   String _formatPoints(int points) {
     return points.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -99,20 +103,21 @@ class _BottomAuctionState extends State<BottomAuction> {
     );
   }
 
+  // ? Форматирует оставшееся время аукциона
   String _formatTimeRemaining(String endedAt) {
     try {
       final end = DateTime.parse(endedAt);
       final diff = end.difference(DateTime.now());
 
-      if (diff.isNegative) {
-        return 'Завершён';
-      }
+      if (diff.isNegative) return 'Завершён';
 
       final hours = diff.inHours;
       final minutes = diff.inMinutes.remainder(60);
       final seconds = diff.inSeconds.remainder(60);
 
-      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      return '${hours.toString().padLeft(2, '0')}:'
+          '${minutes.toString().padLeft(2, '0')}:'
+          '${seconds.toString().padLeft(2, '0')}';
     } catch (_) {
       return '—';
     }
@@ -129,7 +134,7 @@ class _BottomAuctionState extends State<BottomAuction> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🎨 Заголовок с градиентом и кнопкой
+              // ? Заголовок с градиентом и кнопкой создания
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
@@ -147,7 +152,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "🔨 Аукцион игр",
+                            '🔨 Аукцион игр',
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w900,
@@ -156,7 +161,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            "Покупай и продавай игры за очки",
+                            'Покупай и продавай игры за очки',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 14,
@@ -165,7 +170,6 @@ class _BottomAuctionState extends State<BottomAuction> {
                         ],
                       ),
                     ),
-                    // 🔨 Кнопка создания аукциона
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
@@ -219,7 +223,7 @@ class _BottomAuctionState extends State<BottomAuction> {
               else
                 Column(
                   children: [
-                    // 🔴 LIVE Аукцион
+                    // ? LIVE аукцион
                     if (_liveAuction != null) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -244,7 +248,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                                   ),
                                   SizedBox(width: 6),
                                   Text(
-                                    "LIVE",
+                                    'LIVE',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
@@ -255,7 +259,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                             ),
                             const SizedBox(width: 10),
                             const Text(
-                              "Идёт прямо сейчас",
+                              'Идёт прямо сейчас',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -313,7 +317,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                                               fit: BoxFit.cover,
                                               errorBuilder: (_, __, ___) =>
                                                   const Text(
-                                                    "🎮",
+                                                    '🎮',
                                                     style: TextStyle(
                                                       fontSize: 80,
                                                     ),
@@ -321,7 +325,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                                             ),
                                           )
                                         : const Text(
-                                            "🎮",
+                                            '🎮',
                                             style: TextStyle(fontSize: 80),
                                           ),
                                   ],
@@ -341,7 +345,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                                       ),
                                     ),
                                     Text(
-                                      "Продавец: @${_liveAuction!['User']?['login'] ?? 'Unknown'}",
+                                      'Продавец: @${_liveAuction!['User']?['login'] ?? 'Unknown'}',
                                       style: const TextStyle(
                                         color: Colors.grey,
                                         fontSize: 12,
@@ -351,7 +355,6 @@ class _BottomAuctionState extends State<BottomAuction> {
                                       const SizedBox(height: 8),
                                       InkWell(
                                         onTap: () {
-                                          // TODO: Открыть Steam URL
                                           ScaffoldMessenger.of(
                                             context,
                                           ).showSnackBar(
@@ -393,20 +396,20 @@ class _BottomAuctionState extends State<BottomAuction> {
                                             MainAxisAlignment.spaceAround,
                                         children: [
                                           _StatItem(
-                                            label: "Текущая ставка",
+                                            label: 'Текущая ставка',
                                             value:
                                                 "${_formatPoints(_liveAuction!['start_price'] ?? 0)} ⭐",
                                             color: const Color(0xFF34D399),
                                             icon: Icons.star,
                                           ),
                                           _StatItem(
-                                            label: "Ставок",
+                                            label: 'Ставок',
                                             value:
                                                 "${_liveAuction!['bid_count'] ?? 0}",
                                             icon: Icons.trending_up,
                                           ),
                                           _StatItem(
-                                            label: "До конца",
+                                            label: 'До конца',
                                             value: _formatTimeRemaining(
                                               _liveAuction!['ended_at'] ?? '',
                                             ),
@@ -443,7 +446,8 @@ class _BottomAuctionState extends State<BottomAuction> {
                                           ),
                                         ),
                                         child: Text(
-                                          "⚡ Сделать ставку — ${_formatPoints((_liveAuction!['start_price'] ?? 0) + 50)} ⭐",
+                                          '⚡ Сделать ставку — '
+                                          '${_formatPoints((_liveAuction!['start_price'] ?? 0) + 50)} ⭐',
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 15,
@@ -459,6 +463,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                         ),
                       ),
                     ] else ...[
+                      // ? Пустое состояние — нет активных аукционов
                       Container(
                         margin: const EdgeInsets.all(20),
                         padding: const EdgeInsets.all(40),
@@ -476,7 +481,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              "Сейчас нет активных аукционов",
+                              'Сейчас нет активных аукционов',
                               style: TextStyle(
                                 color: Colors.grey,
                                 fontSize: 16,
@@ -484,7 +489,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              "Будь первым — создай аукцион!",
+                              'Будь первым — создай аукцион!',
                               style: TextStyle(
                                 color: Colors.white54,
                                 fontSize: 14,
@@ -516,12 +521,12 @@ class _BottomAuctionState extends State<BottomAuction> {
                       ),
                     ],
 
-                    // ⏳ Ближайшие аукционы
+                    // ? Список ближайших аукционов
                     if (_upcomingAuctions.isNotEmpty) ...[
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          "⏳ Ближайшие аукционы",
+                          '⏳ Ближайшие аукционы',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -534,9 +539,10 @@ class _BottomAuctionState extends State<BottomAuction> {
                         (auction) => _AuctionListItem(
                           title: auction['title'] ?? 'Без названия',
                           meta:
-                              "${auction['bid_count'] ?? 0} ставок • @${auction['User']?['login'] ?? 'Unknown'}",
+                              "${auction['bid_count'] ?? 0} ставок • "
+                              '@${auction['User']?['login'] ?? 'Unknown'}',
                           points:
-                              "${_formatPoints(auction['start_price'] ?? 0)} ⭐",
+                              '${_formatPoints(auction['start_price'] ?? 0)} ⭐',
                           time: _formatTimeRemaining(auction['ended_at'] ?? ''),
                           imageUrl: auction['url_item'],
                           steamUrl: auction['steam_url'],
@@ -551,7 +557,7 @@ class _BottomAuctionState extends State<BottomAuction> {
           ),
         ),
       ),
-      // 🔨 FAB кнопка создания аукциона
+      // ? FAB кнопка создания аукциона
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -567,8 +573,7 @@ class _BottomAuctionState extends State<BottomAuction> {
   }
 }
 
-// ====================== Вспомогательные виджеты ======================
-
+// ? Элемент статистики в карточке аукциона
 class _StatItem extends StatelessWidget {
   final String label;
   final String value;
@@ -603,6 +608,7 @@ class _StatItem extends StatelessWidget {
   }
 }
 
+// ? Элемент списка ближайших аукционов
 class _AuctionListItem extends StatelessWidget {
   final String title;
   final String meta;
@@ -651,12 +657,12 @@ class _AuctionListItem extends StatelessWidget {
                       imageUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const Center(
-                        child: Text("🎮", style: TextStyle(fontSize: 24)),
+                        child: Text('🎮', style: TextStyle(fontSize: 24)),
                       ),
                     ),
                   )
                 : const Center(
-                    child: Text("🎮", style: TextStyle(fontSize: 24)),
+                    child: Text('🎮', style: TextStyle(fontSize: 24)),
                   ),
           ),
           const SizedBox(width: 12),
@@ -710,7 +716,7 @@ class _AuctionListItem extends StatelessWidget {
                 ),
               ),
               Text(
-                "⏰ $time",
+                '⏰ $time',
                 style: const TextStyle(color: Colors.redAccent, fontSize: 11),
               ),
             ],
