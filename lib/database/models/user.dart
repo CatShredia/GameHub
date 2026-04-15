@@ -15,6 +15,7 @@ class User {
     this.createdAt,
   });
 
+  // ? Описание
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id'] as String,
@@ -28,6 +29,7 @@ class User {
     );
   }
 
+  // ? Описание
   Map<String, dynamic> toJson() {
     return {
       'id': id,

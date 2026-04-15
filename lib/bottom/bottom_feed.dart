@@ -4,6 +4,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 final supabase = Supabase.instance.client;
 
+// ? Лента новостей с постами, лайками и комментариями
 class BottomFeed extends StatefulWidget {
   const BottomFeed({super.key});
 
@@ -14,7 +15,7 @@ class BottomFeed extends StatefulWidget {
 class _BottomFeedState extends State<BottomFeed> {
   List<Map<String, dynamic>> _posts = [];
   bool _isLoading = true;
-  final TextEditingController _postController = TextEditingController();
+  final _postController = TextEditingController();
 
   late final RealtimeChannel _postSub;
   late final RealtimeChannel _likeSub;
@@ -27,6 +28,7 @@ class _BottomFeedState extends State<BottomFeed> {
     _subscribeToChanges();
   }
 
+  // ? Загружает посты из Supabase
   Future<void> _fetchPosts() async {
     setState(() => _isLoading = true);
 
@@ -50,7 +52,7 @@ class _BottomFeedState extends State<BottomFeed> {
       debugPrint('Ошибка загрузки постов: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось загрузить ленту')),
+          const SnackBar(content: Text('Не удалось загрузить ленту')),
         );
       }
     } finally {
@@ -58,8 +60,10 @@ class _BottomFeedState extends State<BottomFeed> {
     }
   }
 
+  // ? Подписывается на Realtime-изменения постов, лайков и комментариев
   void _subscribeToChanges() {
-    _postSub = supabase.channel('post_changes')
+    _postSub = supabase
+        .channel('post_changes')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -68,7 +72,8 @@ class _BottomFeedState extends State<BottomFeed> {
         )
         .subscribe();
 
-    _likeSub = supabase.channel('like_changes')
+    _likeSub = supabase
+        .channel('like_changes')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -77,7 +82,8 @@ class _BottomFeedState extends State<BottomFeed> {
         )
         .subscribe();
 
-    _commentSub = supabase.channel('comment_changes')
+    _commentSub = supabase
+        .channel('comment_changes')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -87,7 +93,7 @@ class _BottomFeedState extends State<BottomFeed> {
         .subscribe();
   }
 
-  // === ЛАЙКИ ===
+  // ? Переключает лайк на посте
   Future<void> _toggleLike(int postId) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -110,14 +116,14 @@ class _BottomFeedState extends State<BottomFeed> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка лайка: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка лайка: $e')));
       }
     }
   }
 
-  // === КОММЕНТАРИИ ===
+  // ? Добавляет комментарий к посту
   Future<void> _addComment(int postId, String text) async {
     final user = supabase.auth.currentUser;
     if (user == null || text.trim().isEmpty) return;
@@ -131,12 +137,13 @@ class _BottomFeedState extends State<BottomFeed> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка отправки комментария')),
+          const SnackBar(content: Text('Ошибка отправки комментария')),
         );
       }
     }
   }
 
+  // ? Показывает bottom sheet с комментариями
   void _showComments(int postId) {
     final controller = TextEditingController();
 
@@ -157,7 +164,14 @@ class _BottomFeedState extends State<BottomFeed> {
             children: [
               const Padding(
                 padding: EdgeInsets.all(16),
-                child: Text("Комментарии", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: Text(
+                  'Комментарии',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
               ),
               Expanded(
                 child: StreamBuilder<List<Map<String, dynamic>>>(
@@ -179,12 +193,27 @@ class _BottomFeedState extends State<BottomFeed> {
                       itemBuilder: (context, i) {
                         final c = comments[i];
                         return ListTile(
-                          leading: const CircleAvatar(backgroundColor: Color(0xFF7C3AED), child: Text('👤')),
-                          title: const Text('Пользователь', style: TextStyle(color: Colors.white)),
-                          subtitle: Text(c['content'] ?? '', style: const TextStyle(color: Colors.white70)),
+                          leading: const CircleAvatar(
+                            backgroundColor: Color(0xFF7C3AED),
+                            child: Text('👤'),
+                          ),
+                          title: const Text(
+                            'Пользователь',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            c['content'] ?? '',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
                           trailing: Text(
-                            timeago.format(DateTime.parse(c['created_at']), locale: 'ru'),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            timeago.format(
+                              DateTime.parse(c['created_at']),
+                              locale: 'ru',
+                            ),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
                           ),
                         );
                       },
@@ -193,7 +222,12 @@ class _BottomFeedState extends State<BottomFeed> {
                 ),
               ),
               Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).viewInsets.bottom + 20),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -201,11 +235,14 @@ class _BottomFeedState extends State<BottomFeed> {
                         controller: controller,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          hintText: "Напишите комментарий...",
+                          hintText: 'Напишите комментарий...',
                           hintStyle: const TextStyle(color: Colors.grey),
                           filled: true,
                           fillColor: Colors.white.withOpacity(0.1),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
@@ -226,22 +263,34 @@ class _BottomFeedState extends State<BottomFeed> {
     );
   }
 
+  // ? Публикует новый пост
   Future<void> _publishPost() async {
     final content = _postController.text.trim();
     if (content.isEmpty) return;
 
     final user = supabase.auth.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Войдите в аккаунт')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Войдите в аккаунт')));
       return;
     }
 
     try {
-      await supabase.from('Post').insert({'user_id': user.id, 'content': content});
+      await supabase.from('Post').insert({
+        'user_id': user.id,
+        'content': content,
+      });
       _postController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пост опубликован')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Пост опубликован')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      }
     }
   }
 
@@ -265,13 +314,23 @@ class _BottomFeedState extends State<BottomFeed> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Лента", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
-                Text("Новости, обсуждения и сделки", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                Text(
+                  'Лента',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Новости, обсуждения и сделки',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
               ],
             ),
           ),
 
-          // Composer
+          // ? Форма создания нового поста
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
@@ -288,7 +347,12 @@ class _BottomFeedState extends State<BottomFeed> {
                       CircleAvatar(
                         backgroundColor: const Color(0xFF7C3AED),
                         radius: 20,
-                        child: Text(supabase.auth.currentUser?.email?.isNotEmpty == true ? supabase.auth.currentUser!.email![0].toUpperCase() : "😎"),
+                        child: Text(
+                          supabase.auth.currentUser?.email?.isNotEmpty == true
+                              ? supabase.auth.currentUser!.email![0]
+                                    .toUpperCase()
+                              : '😎',
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -296,8 +360,11 @@ class _BottomFeedState extends State<BottomFeed> {
                           controller: _postController,
                           style: const TextStyle(color: Colors.white),
                           decoration: const InputDecoration(
-                            hintText: "Поделитесь мыслями или предложением...",
-                            hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                            hintText: 'Поделитесь мыслями или предложением...',
+                            hintStyle: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
                             border: InputBorder.none,
                           ),
                           maxLines: 2,
@@ -308,17 +375,22 @@ class _BottomFeedState extends State<BottomFeed> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      _ActionButton(icon: "📷"),
-                      _ActionButton(icon: "🎮"),
-                      _ActionButton(icon: "🔗"),
+                      _ActionButton(icon: '📷'),
+                      _ActionButton(icon: '🎮'),
+                      _ActionButton(icon: '🔗'),
                       const Spacer(),
                       ElevatedButton(
                         onPressed: _publishPost,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF7C3AED),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        child: const Text("Опубликовать", style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Опубликовать',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
@@ -330,29 +402,54 @@ class _BottomFeedState extends State<BottomFeed> {
           const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text("🔥 Популярное сегодня", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+            child: Text(
+              '🔥 Популярное сегодня',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ),
           const SizedBox(height: 12),
 
+          // ? Список постов
           if (_isLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(50), child: CircularProgressIndicator()))
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(50),
+                child: CircularProgressIndicator(),
+              ),
+            )
           else if (_posts.isEmpty)
-            const Center(child: Padding(padding: EdgeInsets.all(50), child: Text("Пока нет постов", style: TextStyle(color: Colors.grey))))
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(50),
+                child: Text(
+                  'Пока нет постов',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
           else
             ..._posts.map((post) {
               final postId = post['id'] as int;
               final userData = post['user'] as Map<String, dynamic>? ?? {};
               final username = userData['username'] ?? 'Пользователь';
               final avatar = userData['avatar'] ?? '🎮';
-              final time = timeago.format(DateTime.parse(post['created_at'] as String), locale: 'ru');
+              final time = timeago.format(
+                DateTime.parse(post['created_at'] as String),
+                locale: 'ru',
+              );
               final content = post['content'] as String;
 
-              // Правильное извлечение количества лайков и комментариев
-              final likesCount = (post['likes'] is List && post['likes'].isNotEmpty)
+              final likesCount =
+                  (post['likes'] is List && post['likes'].isNotEmpty)
                   ? (post['likes'][0]['count'] as int? ?? 0)
                   : 0;
 
-              final commentsCount = (post['comments'] is List && post['comments'].isNotEmpty)
+              final commentsCount =
+                  (post['comments'] is List && post['comments'].isNotEmpty)
                   ? (post['comments'][0]['count'] as int? ?? 0)
                   : 0;
 
@@ -374,21 +471,25 @@ class _BottomFeedState extends State<BottomFeed> {
   }
 }
 
-// ====================== Вспомогательные виджеты ======================
-
+// ? Кнопка действия в форме создания поста
 class _ActionButton extends StatelessWidget {
   final String icon;
+
   const _ActionButton({required this.icon, super.key});
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
-        child: Text(icon, style: const TextStyle(fontSize: 20)),
-      );
+    margin: const EdgeInsets.only(right: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(icon, style: const TextStyle(fontSize: 20)),
+  );
 }
 
+// ? Карточка поста
 class _PostCard extends StatelessWidget {
   final int postId;
   final String avatar, username, time, content, likes, comments;
@@ -423,25 +524,51 @@ class _PostCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(backgroundColor: const Color(0xFF7C3AED), radius: 19, child: Text(avatar, style: const TextStyle(fontSize: 18))),
+              CircleAvatar(
+                backgroundColor: const Color(0xFF7C3AED),
+                radius: 19,
+                child: Text(avatar, style: const TextStyle(fontSize: 18)),
+              ),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(username, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                  Text(time, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text(
+                    username,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    time,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(content, style: const TextStyle(color: Colors.white70, height: 1.4)),
+          Text(
+            content,
+            style: const TextStyle(color: Colors.white70, height: 1.4),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
-              GestureDetector(onTap: onLike, child: _PostAction(icon: "❤️", count: likes, color: Colors.redAccent)),
+              GestureDetector(
+                onTap: onLike,
+                child: _PostAction(
+                  icon: '❤️',
+                  count: likes,
+                  color: Colors.redAccent,
+                ),
+              ),
               const SizedBox(width: 24),
-              GestureDetector(onTap: onComment, child: _PostAction(icon: "💬", count: comments)),
+              GestureDetector(
+                onTap: onComment,
+                child: _PostAction(icon: '💬', count: comments),
+              ),
               const Spacer(),
               const Icon(Icons.share_outlined, color: Colors.grey, size: 20),
             ],
@@ -452,12 +579,18 @@ class _PostCard extends StatelessWidget {
   }
 }
 
+// ? Элемент действия под постом (лайк, комментарий)
 class _PostAction extends StatelessWidget {
   final String icon;
   final String count;
   final Color? color;
 
-  const _PostAction({required this.icon, required this.count, this.color, super.key});
+  const _PostAction({
+    required this.icon,
+    required this.count,
+    this.color,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -4,15 +4,10 @@ class LocalUser {
   final String id;
   final String? email;
 
-  LocalUser({
-    required this.id,
-    this.email,
-  });
+  LocalUser({required this.id, this.email});
 
+  // ? Описание
   factory LocalUser.fromSupabase(User user) {
-    return LocalUser(
-      id: user.id,
-      email: user.email,
-    );
+    return LocalUser(id: user.id, email: user.email);
   }
 }

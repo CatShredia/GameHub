@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as supabase_flutter;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase_flutter;
 import '../models/user.dart' as app_models;
 
 class UserService {
   final SupabaseClient _client = Supabase.instance.client;
   static const String _avatarBucket = 'avatars';
 
-  // Авторизация
+  // ? Описание
   Future<supabase_flutter.AuthResponse> signIn(
     String email,
     String password,
@@ -19,7 +19,7 @@ class UserService {
     );
   }
 
-  // Регистрация
+  // ? Описание
   Future<supabase_flutter.AuthResponse> signUp(
     String email,
     String password,
@@ -27,7 +27,7 @@ class UserService {
     return await _client.auth.signUp(email: email, password: password);
   }
 
-  // Сохранение данных пользователя в БД
+  // ? Описание
   Future<app_models.User> createUserProfile({
     required String id,
     required String email,
@@ -43,17 +43,17 @@ class UserService {
     return app_models.User.fromJson(data);
   }
 
-  // Выход
+  // ? Описание
   Future<void> signOut() async {
     await _client.auth.signOut();
   }
 
-  // Текущий пользователь
+  // ? Описание
   supabase_flutter.User? getCurrentUser() {
     return _client.auth.currentUser;
   }
 
-  // Получение профиля пользователя из БД
+  // ? Описание
   Future<app_models.User?> getUserProfile(String userId) async {
     final response = await _client
         .from('user')
@@ -64,12 +64,12 @@ class UserService {
     return app_models.User.fromJson(response);
   }
 
-  // Сброс пароля
+  // ? Описание
   Future<void> resetPassword(String email) async {
     await _client.auth.resetPasswordForEmail(email);
   }
 
-  // Загрузка аватара
+  // ? Описание
   Future<String> uploadAvatar(
     String userId,
     Uint8List imageBytes,
@@ -77,35 +77,35 @@ class UserService {
   ) async {
     final path = '$userId/$fileName';
 
-    print('Загрузка файла: $path');
+    debugPrint('Загрузка файла: $path');
 
-    // Загружаем файл
     final response = await _client.storage
-        .from('avatars')
+        .from(_avatarBucket)
         .uploadBinary(
           path,
           imageBytes,
           fileOptions: const FileOptions(upsert: true),
         );
 
-    print('Ответ от загрузки: $response');
+    debugPrint('Ответ от загрузки: $response');
 
     if (response.isEmpty) {
       throw Exception('Файл не загрузился');
     }
 
-    final publicUrl = _client.storage.from('avatars').getPublicUrl(path);
+    final publicUrl = _client.storage.from(_avatarBucket).getPublicUrl(path);
 
-    print('Публичный URL: $publicUrl');
+    debugPrint('Публичный URL: $publicUrl');
 
     return publicUrl;
   }
 
+  // ? Описание
   Future<void> updateUserAvatar(String userId, String avatarUrl) async {
     await _client.from('user').update({'avatar': avatarUrl}).eq('id', userId);
   }
 
-  // Обновление профиля пользователя
+  // ? Описание
   Future<app_models.User?> updateUserProfile({
     required String userId,
     String? email,
@@ -129,7 +129,7 @@ class UserService {
     return app_models.User.fromJson(response);
   }
 
-  // Обновление email в Supabase Auth
+  // ? Описание
   Future<void> updateUserEmail(String newEmail) async {
     await _client.auth.updateUser(
       supabase_flutter.UserAttributes(email: newEmail),

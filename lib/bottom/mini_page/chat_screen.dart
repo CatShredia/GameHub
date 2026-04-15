@@ -1,10 +1,12 @@
-// chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../../database/services/chat_service.dart';
+
 final supabase = Supabase.instance.client;
 
+// ? Экран отдельного чата с сообщениями в реальном времени
 class ChatScreen extends StatefulWidget {
   final int chatId;
   final String chatName;
@@ -16,82 +18,29 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  List<Map<String, dynamic>> _messages = [];
-  bool _isLoading = true;
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _chatService = ChatService();
 
-  late final RealtimeChannel _messageSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchMessages();
-    _subscribeToMessages();
-  }
-
-  Future<void> _fetchMessages() async {
-    setState(() => _isLoading = true);
-    try {
-      final data = await supabase
-          .from('Message')
-          .select('id, content, created_at, sender_id')
-          .eq('chat_id', widget.chatId)
-          .order('created_at', ascending: true);
-
-      setState(() {
-        _messages = List<Map<String, dynamic>>.from(data);
-      });
-      _scrollToBottom();
-    } catch (e) {
-      debugPrint('Ошибка загрузки сообщений: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  void _subscribeToMessages() {
-    _messageSubscription = supabase.channel('chat:${widget.chatId}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'Message',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'chat_id',
-            value: widget.chatId,
-          ),
-          callback: (payload) {
-            _fetchMessages();
-          },
-        )
-        .subscribe();
-  }
-
+  // ? Отправляет сообщение в текущий чат
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-
     try {
-      await supabase.from('Message').insert({
-        'chat_id': widget.chatId,
-        'sender_id': user.id,
-        'content': text,
-        'status': true,
-      });
-
+      await _chatService.sendMessage(chatId: widget.chatId, content: text);
       _messageController.clear();
       _scrollToBottom();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка отправки: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e')));
+      }
     }
   }
 
+  // ? Прокручивает список сообщений вниз
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -106,7 +55,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _messageSubscription.unsubscribe();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -124,62 +72,98 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          // ? Стрим сообщений с Realtime-обновлениями
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
-                    ? const Center(
-                        child: Text("Нет сообщений", style: TextStyle(color: Colors.grey)),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          final isMe = msg['sender_id'] == currentUserId;
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _chatService.messagesStream(widget.chatId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                          return Align(
-                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isMe ? const Color(0xFF7C3AED) : Colors.white.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    msg['content'],
-                                    style: TextStyle(
-                                      color: isMe ? Colors.white : Colors.white70,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    timeago.format(DateTime.parse(msg['created_at']), locale: 'ru'),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isMe ? Colors.white70 : Colors.grey,
-                                    ),
-                                  ),
-                                ],
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Ошибка: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                final messages = snapshot.data ?? [];
+
+                if (messages.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Нет сообщений',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final isMe = msg['sender_id'] == currentUserId;
+
+                    return Align(
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isMe
+                              ? const Color(0xFF7C3AED)
+                              : Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              msg['content'] as String,
+                              style: TextStyle(
+                                color: isMe ? Colors.white : Colors.white70,
+                                fontSize: 16,
                               ),
                             ),
-                          );
-                        },
+                            const SizedBox(height: 4),
+                            Text(
+                              timeago.format(
+                                DateTime.parse(msg['created_at'] as String),
+                                locale: 'ru',
+                              ),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isMe ? Colors.white70 : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    );
+                  },
+                );
+              },
+            ),
           ),
 
-          // Поле ввода
+          // ? Поле ввода сообщения
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
             decoration: BoxDecoration(
               color: const Color(0xFF1A1430),
-              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+              border: Border(
+                top: BorderSide(color: Colors.white.withOpacity(0.1)),
+              ),
             ),
             child: Row(
               children: [
@@ -188,7 +172,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _messageController,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: "Напишите сообщение...",
+                      hintText: 'Напишите сообщение...',
                       hintStyle: const TextStyle(color: Colors.grey),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.08),
@@ -196,7 +180,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),

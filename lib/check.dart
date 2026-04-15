@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'auth_page.dart';
 import 'home.dart';
 
+// ? Страница проверки авторизации при запуске приложения
 class CheckPage extends StatefulWidget {
   const CheckPage({super.key});
 
@@ -20,14 +22,16 @@ class _CheckPageState extends State<CheckPage> {
     _checkAuth();
   }
 
+  // ? Проверяет наличие активной сессии Supabase
   Future<void> _checkAuth() async {
-    // Небольшая задержка для полной инициализации Supabase
     await Future.delayed(const Duration(milliseconds: 400));
 
     final session = Supabase.instance.client.auth.currentSession;
     final user = Supabase.instance.client.auth.currentUser;
 
-    debugPrint('🔍 Auth check: user=${user?.email}, session exists=${session != null}');
+    debugPrint(
+      '🔍 Auth check: user=${user?.email}, session exists=${session != null}',
+    );
 
     if (mounted) {
       setState(() {
