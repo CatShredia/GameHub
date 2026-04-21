@@ -1,440 +1,478 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../database/digiseller_api.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-// ? Главная страница с приветствием и карточками
-class BottomHome extends StatelessWidget {
+class BottomHome extends StatefulWidget {
   const BottomHome({super.key});
 
   @override
+  State<BottomHome> createState() => _BottomHomeState();
+}
+
+class _BottomHomeState extends State<BottomHome> {
+  final SupabaseClient supabase = Supabase.instance.client;
+  final DigisellerApiService _api = DigisellerApiService();
+  
+  final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false;
+  List<dynamic> _searchResults = [];
+  bool _isLoadingResults = false;
+
+  List<Map<String, dynamic>> _liveAuctions = [];
+  List<DigisellerProduct> _discountedProducts = [];
+  Map<String, dynamic>? _bestPost;
+  bool _isLoadingData = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  // Загрузка данных для главной страницы
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoadingData = true);
+    try {
+      // 1. Загрузка активных аукционов
+      final auctionData = await supabase
+          .from('Auction_items')
+          .select('id, title, start_price, ended_at, url_item, bid_count')
+          .eq('is_active', true)
+          .order('created_at', ascending: false)
+          .limit(5);
+
+      // 2. Загрузка товаров из Digiseller
+      final products = await _api.fetchProducts();
+
+      // 3. Загрузка лучшего поста дня (по количеству лайков)
+      final postData = await supabase
+          .from('Post')
+          .select('id, content, like, user:User!user_id(username, avatar)')
+          .order('like', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      setState(() {
+        _liveAuctions = List<Map<String, dynamic>>.from(auctionData);
+        _discountedProducts = products.take(5).toList();
+        _bestPost = postData;
+        _isLoadingData = false;
+      });
+    } catch (e) {
+      debugPrint('Ошибка при загрузке данных: $e');
+      setState(() => _isLoadingData = false);
+    }
+  }
+
+  // Метод для перехода к покупке товара
+  Future<void> _handlePurchase(String productId, [String? directUrl]) async {
+    final String urlString = directUrl ?? 
+        'https://www.digiseller.market/asp/curr_select.asp?id_goods=$productId';
+    final Uri url = Uri.parse(urlString);
+    
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  // Глобальный поиск
+  Future<void> _performSearch(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _searchResults = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _isLoadingResults = true;
+    });
+
+    try {
+      // Поиск по пользователям
+      final userResults = await supabase
+          .from('User')
+          .select('username, avatar')
+          .ilike('username', '%$query%')
+          .limit(3);
+
+      // Поиск по постам
+      final postResults = await supabase
+          .from('Post')
+          .select('content, user:User!user_id(username)')
+          .ilike('content', '%$query%')
+          .limit(3);
+
+      // Поиск по каналам
+      final channelResults = await supabase
+          .from('Chat')
+          .select('namechat')
+          .ilike('namechat', '%$query%')
+          .limit(3);
+
+      // Поиск по товарам в API
+      final allProducts = await _api.fetchProducts();
+      final productResults = allProducts
+          .where((p) => p.name.toLowerCase().contains(query.toLowerCase()))
+          .take(5)
+          .toList();
+
+      setState(() {
+        _searchResults = [
+          ...userResults.map((e) => {...e, 'type': 'user'}),
+          ...postResults.map((e) => {...e, 'type': 'post'}),
+          ...channelResults.map((e) => {...e, 'type': 'channel'}),
+          ...productResults.map((e) => {
+            'name': e.name, 
+            'id': e.id, 
+            'type': 'product', 
+            'price': e.price,
+            'buy_url': e.buyUrl
+          }),
+        ];
+        _isLoadingResults = false;
+      });
+    } catch (e) {
+      debugPrint('Ошибка поиска: $e');
+      setState(() => _isLoadingResults = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: RefreshIndicator(
+        onRefresh: _loadInitialData,
+        color: const Color(0xFF7C3AED),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              _buildSearchBar(),
+              if (_isSearching) _buildSearchResults() else _buildMainContent(),
+              const SizedBox(height: 100),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        if (_bestPost != null) ...[
+          _buildSectionTitle('🔥 Лучший пост дня'),
+          _buildBestPostCard(),
+        ],
+        const SizedBox(height: 28),
+        _buildSectionHeader('⚡ Активные аукционы', () {}),
+        _buildAuctionsList(),
+        const SizedBox(height: 32),
+        _buildSectionHeader('🏷️ Рекомендуемые товары', () {}),
+        _buildProductsList(),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 60, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ? Заголовок с приветствием
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 60, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Добро пожаловать 👋',
-                  style: TextStyle(color: Color(0xFF8888AA), fontSize: 15),
-                ),
-                Text(
-                  'GameVault',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ? Поле поиска
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.08)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.search, color: Colors.grey),
-                  SizedBox(width: 12),
-                  Text(
-                    'Поиск игр, ключей, каналов...',
-                    style: TextStyle(color: Colors.grey, fontSize: 15),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // ? Быстрый доступ — категории
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'Быстрый доступ',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 90,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: const [
-                _StoryItem(emoji: '🎮', label: 'Новинки', isHot: true),
-                _StoryItem(emoji: '🔑', label: 'Ключи'),
-                _StoryItem(emoji: '💰', label: 'Скидки', isHot: true),
-                _StoryItem(emoji: '🏆', label: 'Топ'),
-                _StoryItem(emoji: '🎯', label: 'Подборки'),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 28),
-
-          // ? Сгорающие аукционы
-          _SectionHeader(title: '⚡ Сгорающие аукционы', onSeeAll: () {}),
-          SizedBox(
-            height: 210,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: const [
-                _AuctionCard(
-                  title: 'GTA V Premium',
-                  price: '890',
-                  bids: '24',
-                  time: '02:34:12',
-                  emoji: '🚗',
-                ),
-                _AuctionCard(
-                  title: 'Cyberpunk 2077',
-                  price: '1200',
-                  bids: '37',
-                  time: '00:45:30',
-                  emoji: '🤖',
-                ),
-                _AuctionCard(
-                  title: 'RDR 2 Ultimate',
-                  price: '1500',
-                  bids: '18',
-                  time: '05:12:44',
-                  emoji: '🤠',
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // ? Скидки дня
-          _SectionHeader(title: '🏷️ Скидки дня', onSeeAll: () {}),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              children: [
-                _DiscountCard(
-                  emoji: '🧙',
-                  title: 'Hogwarts Legacy',
-                  desc: 'Steam ключ • Глобальный',
-                  oldPrice: '3499',
-                  newPrice: '1799',
-                  discount: '-49%',
-                ),
-                SizedBox(height: 12),
-                _DiscountCard(
-                  emoji: '🚀',
-                  title: 'Starfield',
-                  desc: 'Steam ключ • Глобальный',
-                  oldPrice: '4999',
-                  newPrice: '2499',
-                  discount: '-50%',
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 100),
+          Text('Добро пожаловать 👋', style: TextStyle(color: Color(0xFF8888AA), fontSize: 15)),
+          Text('GameVault', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white)),
         ],
       ),
     );
   }
-}
 
-// ? Карточка категории быстрого доступа
-class _StoryItem extends StatelessWidget {
-  final String emoji;
-  final String label;
-  final bool isHot;
-
-  const _StoryItem({
-    required this.emoji,
-    required this.label,
-    this.isHot = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.only(right: 16),
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF7C3AED), Color(0xFF3B82F6)],
-              ),
-              border: Border.all(color: const Color(0xFF8B5CF6), width: 2),
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 28)),
-            ),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: _performSearch,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Поиск товаров, постов, юзеров...',
+            hintStyle: const TextStyle(color: Colors.grey, fontSize: 15),
+            prefixIcon: const Icon(Icons.search, color: Colors.grey),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 15),
+            suffixIcon: _isSearching 
+              ? IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey), 
+                  onPressed: () {
+                    _searchController.clear();
+                    _performSearch('');
+                  }) 
+              : null,
           ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBestPostCard() {
+    final user = _bestPost!['user'];
+    final likes = _bestPost!['like'] ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundImage: user['avatar'] != null ? NetworkImage(user['avatar']) : null,
+                backgroundColor: Colors.white10,
+                child: user['avatar'] == null ? const Icon(Icons.person, size: 18, color: Colors.white) : null,
+              ),
+              const SizedBox(width: 12),
+              Text(user['username'] ?? 'User', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              const Icon(Icons.star, color: Colors.amber, size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _bestPost!['content'] ?? '',
+            style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.favorite, color: Colors.redAccent, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      likes.toString(),
+                      style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
-}
 
-// ? Заголовок секции с кнопкой «Все»
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final VoidCallback onSeeAll;
+  Widget _buildAuctionsList() {
+    if (_isLoadingData) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+    if (_liveAuctions.isEmpty) return const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Нет активных аукционов', style: TextStyle(color: Colors.grey)));
 
-  const _SectionHeader({required this.title, required this.onSeeAll});
+    return SizedBox(
+      height: 210,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _liveAuctions.length,
+        itemBuilder: (context, index) {
+          final a = _liveAuctions[index];
+          return _AuctionCard(
+            title: a['title'] ?? 'Лот',
+            price: a['start_price'].toString(),
+            bids: a['bid_count'].toString(),
+            time: 'LIVE',
+            emoji: '🎮',
+          );
+        },
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildProductsList() {
+    if (_isLoadingData) return const SizedBox();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: _discountedProducts.map((p) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            onTap: () => _handlePurchase(p.id, p.buyUrl), // Переход к покупке
+            borderRadius: BorderRadius.circular(20),
+            child: _DiscountCard(
+              emoji: '🎁',
+              title: p.name,
+              desc: 'Моментальная доставка',
+              oldPrice: (double.parse(p.price) * 1.2).toInt().toString(),
+              newPrice: p.price,
+              discount: '-20%',
+            ),
+          ),
+        )).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    if (_isLoadingResults) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+    if (_searchResults.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Ничего не найдено', style: TextStyle(color: Colors.white))));
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        final item = _searchResults[index];
+        IconData iconData = Icons.search;
+        String title = '';
+        String sub = item['type'];
+
+        if (item['type'] == 'user') {
+          iconData = Icons.person;
+          title = item['username'];
+        } else if (item['type'] == 'product') {
+          iconData = Icons.shopping_cart;
+          title = item['name'];
+          sub = '${item['price']} ₽';
+        } else if (item['type'] == 'post') {
+          iconData = Icons.article;
+          title = item['content'];
+        } else {
+          iconData = Icons.chat_bubble;
+          title = item['namechat'];
+        }
+
+        return ListTile(
+          leading: Icon(iconData, color: Colors.white54),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
+          subtitle: Text(sub, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          onTap: () {
+            if (item['type'] == 'product') {
+              _handlePurchase(item['id'], item['buy_url']);
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, VoidCallback onSeeAll) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          Text(
-            'Все →',
-            style: TextStyle(
-              fontSize: 14,
-              color: const Color(0xFF8B5CF6),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          TextButton(onPressed: onSeeAll, child: const Text('Все', style: TextStyle(color: Color(0xFF7C3AED)))),
         ],
       ),
     );
   }
 }
 
-// ? Карточка аукциона в горизонтальном списке
+// Вспомогательные компоненты (Аукционы и Товары)
+
 class _AuctionCard extends StatelessWidget {
   final String title, price, bids, time, emoji;
-
-  const _AuctionCard({
-    required this.title,
-    required this.price,
-    required this.bids,
-    required this.time,
-    required this.emoji,
-  });
+  const _AuctionCard({required this.title, required this.price, required this.bids, required this.time, required this.emoji});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: 14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E1438), Color(0xFF0F0A24)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.2)),
-      ),
+      width: 160,
+      margin: const EdgeInsets.only(right: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(24)),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 110,
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Text(emoji, style: const TextStyle(fontSize: 50)),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.timer, size: 12, color: Colors.white),
-                        const SizedBox(width: 4),
-                        Text(
-                          time,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Текущая',
-                      style: TextStyle(color: Colors.grey, fontSize: 11),
-                    ),
-                    Text(
-                      '₽ $price',
-                      style: const TextStyle(
-                        color: Color(0xFFA78BFA),
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  '$bids ставки',
-                  style: const TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
+          Text(emoji, style: const TextStyle(fontSize: 32)),
+          const Spacer(),
+          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text('$bids ставок', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$price ₽', style: const TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold)),
+              Text(time, style: const TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+            ],
+          )
         ],
       ),
     );
   }
 }
 
-// ? Карточка скидки
 class _DiscountCard extends StatelessWidget {
   final String emoji, title, desc, oldPrice, newPrice, discount;
-
-  const _DiscountCard({
-    required this.emoji,
-    required this.title,
-    required this.desc,
-    required this.oldPrice,
-    required this.newPrice,
-    required this.discount,
-  });
+  const _DiscountCard({required this.emoji, required this.title, required this.desc, required this.oldPrice, required this.newPrice, required this.discount});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E1438), Color(0xFF0F0A24)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20)),
       child: Row(
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: const Color(0xFF6D28D9),
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 32)),
-            ),
-          ),
-          const SizedBox(width: 14),
+          Text(emoji, style: const TextStyle(fontSize: 32)),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontSize: 15,
-                  ),
-                ),
-                Text(
-                  desc,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text(
-                      '₽ $oldPrice',
-                      style: const TextStyle(
-                        decoration: TextDecoration.lineThrough,
-                        color: Colors.grey,
-                      ),
-                    ),
+                    Text('$newPrice ₽', style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold)),
                     const SizedBox(width: 8),
-                    Text(
-                      '₽ $newPrice',
-                      style: const TextStyle(
-                        color: Color(0xFF34D399),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('$oldPrice ₽', style: const TextStyle(color: Colors.white24, fontSize: 11, decoration: TextDecoration.lineThrough)),
                   ],
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF34D399).withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              discount,
-              style: const TextStyle(
-                color: Color(0xFF34D399),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            child: Text(discount, style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold)),
+          )
         ],
       ),
     );
