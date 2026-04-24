@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/services/profile_service.dart';
 import 'mini_page/auctions_list_page.dart';
 import 'mini_page/edit_profile_page.dart';
+import 'mini_page/favorites_page.dart';
 import 'mini_page/notifications_sheet.dart';
 import 'mini_page/reate_auction_page.dart';
 
@@ -353,6 +354,19 @@ class _BottomProfileState extends State<BottomProfile> {
             title: 'Уведомления',
             subtitle: 'История оповещений',
             onTap: _openNotifications,
+          ),
+          _ProfileMenuItem(
+            icon: '🔖',
+            title: 'Закладки',
+            subtitle: 'Сохранённые посты и аукционы',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FavoritesPage(),
+                ),
+              );
+            },
           ),
           _ProfileMenuItem(
             icon: '🚪',

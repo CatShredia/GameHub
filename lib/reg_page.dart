@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'auth_page.dart';
 import 'database/service.dart';
 
 // ? Страница регистрации нового пользователя
@@ -59,25 +58,38 @@ class _RegPageState extends State<RegPage> {
         username: _usernameController.text.trim(),
       );
 
-      if (user != null && mounted) {
-        debugPrint('✅ Регистрация успешна: ${user.email}');
+      if (!mounted) return;
 
-        if (user.emailConfirmedAt != null) {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/home', (route) => false);
-        } else {
-          _showSnackBar(
-            'Регистрация успешна! Проверьте почту для подтверждения.',
-            Colors.green,
-          );
-          Navigator.pop(context);
-        }
+      if (user == null) {
+        _showSnackBar('Не удалось зарегистрироваться', Colors.redAccent);
+        return;
+      }
+
+      debugPrint('✅ Регистрация успешна: ${user.email}');
+
+      final hasSession = Supabase.instance.client.auth.currentSession != null;
+      if (hasSession) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/home', (route) => false);
+      } else {
+        _showSnackBar(
+          'Регистрация успешна! Проверьте почту для подтверждения.',
+          Colors.green,
+        );
+        Navigator.pop(context);
       }
     } on AuthException catch (e) {
       String msg = e.message;
-      if (msg.contains('already registered')) {
+      final low = msg.toLowerCase();
+      if (low.contains('already registered') ||
+          low.contains('already been registered') ||
+          low.contains('user already registered')) {
         msg = 'Пользователь с таким email уже существует';
+      } else if (low.contains('invalid') && low.contains('email')) {
+        msg = 'Некорректный email';
+      } else if (low.contains('password')) {
+        msg = 'Слишком простой пароль';
       }
       if (mounted) _showSnackBar(msg, Colors.redAccent);
     } catch (e) {

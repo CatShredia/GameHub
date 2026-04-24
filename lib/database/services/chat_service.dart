@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabase = Supabase.instance.client;
+const List<String> _userTableCandidates = ['User', 'users', 'user', '"User"'];
 
 // ? Сервис для работы с чатами через Supabase Realtime (WebSocket)
 class ChatService {
@@ -421,11 +422,20 @@ class ChatService {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return null;
 
-    final target = await supabase
-        .from('User')
-        .select('id, username')
-        .eq('login', targetLogin)
-        .maybeSingle();
+    Map<String, dynamic>? target;
+    for (final table in _userTableCandidates) {
+      try {
+        final row = await supabase
+            .from(table)
+            .select('id, username')
+            .eq('login', targetLogin)
+            .maybeSingle();
+        if (row != null) {
+          target = Map<String, dynamic>.from(row);
+          break;
+        }
+      } catch (_) {}
+    }
 
     if (target == null) return null;
 

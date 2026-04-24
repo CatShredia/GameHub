@@ -1,13 +1,30 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:uuid/uuid.dart';
 
 import '../database/post_content_codec.dart';
+import '../database/services/draft_service.dart';
+import '../database/services/favorite_service.dart';
+import '../database/services/media_service.dart';
+import '../database/services/report_service.dart';
+import '../database/services/tag_service.dart';
+import '../widgets/attachment_tile.dart';
+import '../widgets/voice_player.dart';
+import 'mini_page/report_sheet.dart';
 
 final supabase = Supabase.instance.client;
 
-// ? Лента в стиле Twitter: текст, фото, цитата, лайки/комменты с обновлением
+/// Лента: текст, фото, цитаты, голосовые посты, вложения, хэштеги и фильтр по тегам.
 class BottomFeed extends StatefulWidget {
   const BottomFeed({super.key});
 
@@ -18,11 +35,29 @@ class BottomFeed extends StatefulWidget {
 class _BottomFeedState extends State<BottomFeed> {
   List<Map<String, dynamic>> _posts = [];
   Set<int> _likedPostIds = {};
+  Set<int> _favoritePostIds = {};
+  PostDraft? _savedDraft;
   bool _isLoading = true;
   final _postController = TextEditingController();
   final _feedSearchController = TextEditingController();
   final List<String> _draftImages = [];
+  final List<AttachmentMeta> _draftAttachments = [];
+  String? _draftAudioUrl;
+  int? _draftAudioMs;
   Map<String, dynamic>? _quoteFrom;
+
+  // Голосовая запись поста
+  final _recorder = AudioRecorder();
+  bool _recording = false;
+  DateTime? _recordStartedAt;
+  Duration _recordDuration = Duration.zero;
+  Timer? _recordTicker;
+  String? _recordingPath;
+
+  // Теги
+  List<Map<String, dynamic>> _popularTags = [];
+  String? _activeTag;
+  Set<int>? _tagFilterPostIds;
 
   late final RealtimeChannel _postSub;
   late final RealtimeChannel _likeSub;
@@ -34,20 +69,118 @@ class _BottomFeedState extends State<BottomFeed> {
     _feedSearchController.addListener(() {
       if (mounted) setState(() {});
     });
+    _postController.addListener(_scheduleDraftSave);
     _fetchPosts();
+    _loadPopularTags();
+    _loadFavorites();
+    _loadDraft();
     _subscribeToChanges();
   }
 
+  Timer? _draftTimer;
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 500), _persistDraft);
+  }
+
+  Future<void> _persistDraft() async {
+    await DraftService.instance.save(
+      PostDraft(
+        text: _postController.text,
+        imageUrls: List.from(_draftImages),
+        audioUrl: _draftAudioUrl,
+        audioDurationMs: _draftAudioMs,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<void> _loadFavorites() async {
+    final ids = await FavoriteService.instance.listIds(FavoriteKind.post);
+    if (!mounted) return;
+    setState(() => _favoritePostIds = ids);
+  }
+
+  Future<void> _loadDraft() async {
+    final d = await DraftService.instance.load();
+    if (!mounted) return;
+    if (d == null || d.isEmpty) return;
+    if (_postController.text.isNotEmpty || _draftImages.isNotEmpty) return;
+    setState(() => _savedDraft = d);
+  }
+
+  Future<void> _restoreDraft() async {
+    final d = _savedDraft;
+    if (d == null) return;
+    setState(() {
+      _postController.text = d.text;
+      _draftImages
+        ..clear()
+        ..addAll(d.imageUrls);
+      _draftAudioUrl = d.audioUrl;
+      _draftAudioMs = d.audioDurationMs;
+      _savedDraft = null;
+    });
+  }
+
+  Future<void> _discardSavedDraft() async {
+    await DraftService.instance.clear();
+    if (!mounted) return;
+    setState(() => _savedDraft = null);
+  }
+
+  Future<void> _toggleFavorite(int postId) async {
+    final now =
+        await FavoriteService.instance.toggle(kind: FavoriteKind.post, refId: postId);
+    if (!mounted) return;
+    setState(() {
+      if (now) {
+        _favoritePostIds.add(postId);
+      } else {
+        _favoritePostIds.remove(postId);
+      }
+    });
+  }
+
+  Future<void> _loadPopularTags() async {
+    final tags = await TagService.instance.popular(limit: 10);
+    if (!mounted) return;
+    setState(() => _popularTags = tags);
+  }
+
+  Future<void> _applyTagFilter(String? tagName) async {
+    if (tagName == null) {
+      setState(() {
+        _activeTag = null;
+        _tagFilterPostIds = null;
+      });
+      return;
+    }
+    final ids = await TagService.instance.postIdsByTag(tagName);
+    if (!mounted) return;
+    setState(() {
+      _activeTag = tagName;
+      _tagFilterPostIds = ids.toSet();
+    });
+  }
+
   List<Map<String, dynamic>> _visiblePosts() {
+    Iterable<Map<String, dynamic>> list = _posts;
+    if (_tagFilterPostIds != null) {
+      list = list.where(
+          (post) => _tagFilterPostIds!.contains((post['id'] as num).toInt()));
+    }
     final q = _feedSearchController.text.trim().toLowerCase();
-    if (q.isEmpty) return _posts;
-    return _posts.where((post) {
+    if (q.isEmpty) return list.toList();
+    return list.where((post) {
       final user = post['user'] as Map<String, dynamic>? ?? {};
       final un = (user['username'] as String? ?? '').toLowerCase();
       final ln = (user['login'] as String? ?? '').toLowerCase();
       final raw = post['content'] as String? ?? '';
       final d = decodePostContent(raw);
-      final searchBlob = [d.text, raw, un, '@$ln'].join(' ').toLowerCase();
+      final searchBlob = [d.text, raw, un, '@$ln', d.tags.join(' ')]
+          .join(' ')
+          .toLowerCase();
       return searchBlob.contains(q);
     }).toList();
   }
@@ -209,24 +342,23 @@ class _BottomFeedState extends State<BottomFeed> {
     final picker = ImagePicker();
     final x = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (x == null) return;
-    final user = supabase.auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Войдите в аккаунт')),
-      );
-      return;
-    }
     try {
-      final bytes = await x.readAsBytes();
-      final path = 'feed/${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await supabase.storage.from('avatars').uploadBinary(
-            path,
-            bytes,
-            fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
-          );
+      final uploaded = await MediaService.instance.uploadPostMedia(
+        file: File(x.path),
+        contentType: 'image/jpeg',
+      );
+      if (uploaded == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось загрузить фото: проверьте storage бакеты'),
+          ),
+        );
+        return;
+      }
       if (!mounted) return;
-      final url = supabase.storage.from('avatars').getPublicUrl(path);
-      setState(() => _draftImages.add(url));
+      setState(() => _draftImages.add(uploaded.url));
+      _scheduleDraftSave();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -236,9 +368,141 @@ class _BottomFeedState extends State<BottomFeed> {
     }
   }
 
+  Future<void> _pickAttachment() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: false,
+      );
+      if (res == null || res.files.isEmpty) return;
+      final file = res.files.first;
+      if (file.path == null) return;
+
+      final uploaded = await MediaService.instance
+          .uploadPostMedia(file: File(file.path!));
+      if (uploaded == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось загрузить файл')),
+          );
+        }
+        return;
+      }
+      setState(() {
+        _draftAttachments.add(AttachmentMeta(
+          url: uploaded.url,
+          name: uploaded.name,
+          sizeBytes: uploaded.sizeBytes,
+          mime: uploaded.mime,
+        ));
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Файл: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _startRecording() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Нет доступа к микрофону')),
+        );
+      }
+      return;
+    }
+    try {
+      final dir = await getTemporaryDirectory();
+      final path = p.join(dir.path, '${const Uuid().v4()}.m4a');
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 96000),
+        path: path,
+      );
+      _recordingPath = path;
+      _recordStartedAt = DateTime.now();
+      _recordDuration = Duration.zero;
+      _recordTicker?.cancel();
+      _recordTicker = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (_recordStartedAt != null) {
+          setState(() {
+            _recordDuration = DateTime.now().difference(_recordStartedAt!);
+          });
+        }
+      });
+      setState(() => _recording = true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Запись: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecording({required bool discard}) async {
+    _recordTicker?.cancel();
+    _recordTicker = null;
+
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {
+      path = _recordingPath;
+    }
+
+    final dur = _recordDuration;
+    final file = path != null ? File(path) : null;
+
+    setState(() {
+      _recording = false;
+      _recordDuration = Duration.zero;
+      _recordStartedAt = null;
+      _recordingPath = null;
+    });
+
+    if (discard || file == null || dur.inMilliseconds < 400) {
+      try {
+        if (file != null && await file.exists()) await file.delete();
+      } catch (_) {}
+      return;
+    }
+
+    final uploaded = await MediaService.instance.uploadPostMedia(
+      file: file,
+      contentType: 'audio/m4a',
+    );
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+
+    if (uploaded == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось загрузить голос')),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _draftAudioUrl = uploaded.url;
+      _draftAudioMs = dur.inMilliseconds;
+    });
+    _scheduleDraftSave();
+  }
+
   Future<void> _publishPost() async {
     final base = _postController.text.trim();
-    if (base.isEmpty && _draftImages.isEmpty && _quoteFrom == null) return;
+    final hasContent = base.isNotEmpty ||
+        _draftImages.isNotEmpty ||
+        _draftAttachments.isNotEmpty ||
+        _draftAudioUrl != null ||
+        _quoteFrom != null;
+    if (!hasContent) return;
 
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -262,25 +526,41 @@ class _BottomFeedState extends State<BottomFeed> {
       };
     }
 
+    final tags = TagService.instance.parseTags(base);
     final encoded = encodePostContent(
       PostContentData(
         text: base,
         imageUrls: List.from(_draftImages),
         quotePostId: qid,
         quoteSnapshot: qs,
+        audioUrl: _draftAudioUrl,
+        audioDurationMs: _draftAudioMs,
+        attachments: List.from(_draftAttachments),
+        tags: tags,
       ),
     );
 
     try {
-      await supabase.from('Post').insert({
-        'user_id': user.id,
-        'content': encoded,
-      });
+      final inserted = await supabase
+          .from('Post')
+          .insert({'user_id': user.id, 'content': encoded})
+          .select('id')
+          .single();
+      final postId = (inserted['id'] as num).toInt();
+      if (tags.isNotEmpty) {
+        await TagService.instance.upsertPostTags(postId: postId, names: tags);
+        await _loadPopularTags();
+      }
+
       _postController.clear();
       setState(() {
         _draftImages.clear();
+        _draftAttachments.clear();
+        _draftAudioUrl = null;
+        _draftAudioMs = null;
         _quoteFrom = null;
       });
+      await DraftService.instance.clear();
       await _fetchPosts();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -441,12 +721,22 @@ class _BottomFeedState extends State<BottomFeed> {
 
   @override
   void dispose() {
+    _recordTicker?.cancel();
+    _draftTimer?.cancel();
+    _recorder.dispose();
     _postSub.unsubscribe();
     _likeSub.unsubscribe();
     _commentSub.unsubscribe();
+    _postController.removeListener(_scheduleDraftSave);
     _postController.dispose();
     _feedSearchController.dispose();
     super.dispose();
+  }
+
+  String _fmtDur(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   @override
@@ -456,7 +746,10 @@ class _BottomFeedState extends State<BottomFeed> {
 
     return RefreshIndicator(
       color: const Color(0xFF7C3AED),
-      onRefresh: _fetchPosts,
+      onRefresh: () async {
+        await _fetchPosts();
+        await _loadPopularTags();
+      },
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -475,7 +768,7 @@ class _BottomFeedState extends State<BottomFeed> {
                     ),
                   ),
                   const Text(
-                    'Посты, фото и репосты с комментарием',
+                    'Посты, фото, голос, файлы и хэштеги',
                     style: TextStyle(color: Colors.grey, fontSize: 14),
                   ),
                   const SizedBox(height: 12),
@@ -483,7 +776,7 @@ class _BottomFeedState extends State<BottomFeed> {
                     controller: _feedSearchController,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: 'Поиск в ленте: текст, @логин, имя...',
+                      hintText: 'Поиск: текст, #тег, @логин, имя...',
                       hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
                       prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 22),
                       suffixIcon: _feedSearchController.text.isNotEmpty
@@ -504,133 +797,11 @@ class _BottomFeedState extends State<BottomFeed> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (_quoteFrom != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2D1B69).withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.format_quote, color: Color(0xFF7C3AED)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Цитата: ${_previewText(_quoteFrom!['content'] as String? ?? '')}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 13),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Colors.grey, size: 20),
-                            onPressed: () => setState(() => _quoteFrom = null),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: const Color(0xFF7C3AED),
-                              radius: 20,
-                              child: Text(
-                                me?.email?.isNotEmpty == true
-                                    ? me!.email![0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: _postController,
-                                style: const TextStyle(color: Colors.white),
-                                decoration: const InputDecoration(
-                                  hintText: 'Что нового?',
-                                  hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                                  border: InputBorder.none,
-                                ),
-                                minLines: 2,
-                                maxLines: 6,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (_draftImages.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _draftImages
-                                .map(
-                                  (u) => Stack(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          u,
-                                          width: 80,
-                                          height: 80,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: 0,
-                                        top: 0,
-                                        child: InkWell(
-                                          onTap: () =>
-                                              setState(() => _draftImages.remove(u)),
-                                          child: const Icon(Icons.close, color: Colors.white, size: 18),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _pickImage,
-                              icon: const Icon(Icons.image_outlined, color: Color(0xFF7C3AED)),
-                              tooltip: 'Фото',
-                            ),
-                            const Spacer(),
-                            ElevatedButton(
-                              onPressed: _publishPost,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF7C3AED),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              child: const Text(
-                                'Опубликовать',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  _tagsRow(),
+                  const SizedBox(height: 12),
+                  if (_quoteFrom != null) _quoteChip(),
+                  if (_savedDraft != null) _draftBanner(),
+                  _composer(me),
                 ],
               ),
             ),
@@ -660,7 +831,9 @@ class _BottomFeedState extends State<BottomFeed> {
                 padding: const EdgeInsets.all(32),
                 child: Center(
                   child: Text(
-                    'Ничего не найдено по «${_feedSearchController.text.trim()}»',
+                    _activeTag != null
+                        ? 'Нет постов с тегом #$_activeTag'
+                        : 'Ничего не найдено по «${_feedSearchController.text.trim()}»',
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.grey),
                   ),
@@ -709,6 +882,7 @@ class _BottomFeedState extends State<BottomFeed> {
                     likes: likesCount,
                     comments: commentsCount,
                     liked: _likedPostIds.contains(postId),
+                    bookmarked: _favoritePostIds.contains(postId),
                     onLike: () => _toggleLike(postId),
                     onComment: () {
                       _showComments(postId);
@@ -722,12 +896,344 @@ class _BottomFeedState extends State<BottomFeed> {
                         };
                       });
                     },
+                    onTag: (t) => _applyTagFilter(t),
+                    onBookmark: () => _toggleFavorite(postId),
+                    onReport: () => showReportSheet(
+                      context,
+                      kind: ReportTargetKind.post,
+                      targetId: postId.toString(),
+                    ),
                   );
                 },
                 childCount: visible.length,
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
+  }
+
+  Widget _tagsRow() {
+    if (_popularTags.isEmpty && _activeTag == null) return const SizedBox.shrink();
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _tagChip(
+            label: 'Все',
+            active: _activeTag == null,
+            onTap: () => _applyTagFilter(null),
+          ),
+          if (_activeTag != null &&
+              !_popularTags.any((t) => t['name'].toString() == _activeTag))
+            _tagChip(
+              label: '#$_activeTag',
+              active: true,
+              onTap: () => _applyTagFilter(null),
+            ),
+          for (final t in _popularTags)
+            _tagChip(
+              label: '#${t['name']}',
+              active: _activeTag == t['name'].toString(),
+              onTap: () => _applyTagFilter(t['name'].toString()),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tagChip({
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: active
+                ? const Color(0xFF7C3AED)
+                : Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white : Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _quoteChip() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2D1B69).withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.format_quote, color: Color(0xFF7C3AED)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Цитата: ${_previewText(_quoteFrom!['content'] as String? ?? '')}',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+            onPressed: () => setState(() => _quoteFrom = null),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _draftBanner() {
+    final d = _savedDraft!;
+    final preview = d.text.trim().isNotEmpty
+        ? d.text.trim()
+        : (d.imageUrls.isNotEmpty
+            ? '📷 ${d.imageUrls.length} фото'
+            : (d.audioUrl != null ? '🎤 голосовое' : 'черновик'));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2D1B69).withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.edit_note, color: Color(0xFF7C3AED)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Есть черновик',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13),
+                ),
+                Text(
+                  preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: _restoreDraft,
+            child: const Text('Продолжить',
+                style: TextStyle(color: Color(0xFF7C3AED))),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+            onPressed: _discardSavedDraft,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _composer(User? me) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: const Color(0xFF7C3AED),
+                radius: 20,
+                child: Text(
+                  me?.email?.isNotEmpty == true
+                      ? me!.email![0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _postController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Что нового? Пиши #теги...',
+                    hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                    border: InputBorder.none,
+                  ),
+                  minLines: 2,
+                  maxLines: 6,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+          if (_draftImages.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _draftImages
+                  .map(
+                    (u) => Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            u,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: InkWell(
+                            onTap: () => setState(() => _draftImages.remove(u)),
+                            child: const Icon(Icons.close,
+                                color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (_draftAudioUrl != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: VoicePlayer(
+                    url: _draftAudioUrl!,
+                    durationMs: _draftAudioMs,
+                    background: const Color(0xFF0F0F1A),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => setState(() {
+                    _draftAudioUrl = null;
+                    _draftAudioMs = null;
+                  }),
+                ),
+              ],
+            ),
+          ],
+          if (_draftAttachments.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _draftAttachments
+                  .map((a) => Stack(
+                        children: [
+                          AttachmentTile(meta: a),
+                          Positioned(
+                            right: -4,
+                            top: -4,
+                            child: InkWell(
+                              onTap: () => setState(
+                                  () => _draftAttachments.remove(a)),
+                              child: const Icon(Icons.cancel,
+                                  color: Colors.white70, size: 18),
+                            ),
+                          ),
+                        ],
+                      ))
+                  .toList(),
+            ),
+          ],
+          if (_recording)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.fiber_manual_record, color: Colors.redAccent),
+                  const SizedBox(width: 8),
+                  Text('Запись ${_fmtDur(_recordDuration)}',
+                      style: const TextStyle(color: Colors.white70)),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => _stopRecording(discard: true),
+                    icon: const Icon(Icons.close, color: Colors.redAccent),
+                  ),
+                  IconButton(
+                    onPressed: () => _stopRecording(discard: false),
+                    icon: const Icon(Icons.check, color: Color(0xFF7C3AED)),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              IconButton(
+                onPressed: _pickImage,
+                icon: const Icon(Icons.image_outlined, color: Color(0xFF7C3AED)),
+                tooltip: 'Фото',
+              ),
+              IconButton(
+                onPressed: _pickAttachment,
+                icon: const Icon(Icons.attach_file, color: Color(0xFF7C3AED)),
+                tooltip: 'Файл',
+              ),
+              if (_draftAudioUrl == null && !_recording)
+                IconButton(
+                  onPressed: _startRecording,
+                  icon: const Icon(Icons.mic, color: Color(0xFF7C3AED)),
+                  tooltip: 'Голос',
+                ),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: _publishPost,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Опубликовать',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -752,9 +1258,13 @@ class _PostCardX extends StatelessWidget {
   final int likes;
   final int comments;
   final bool liked;
+  final bool bookmarked;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onQuote;
+  final ValueChanged<String> onTag;
+  final VoidCallback onBookmark;
+  final VoidCallback onReport;
 
   const _PostCardX({
     required this.postId,
@@ -766,9 +1276,13 @@ class _PostCardX extends StatelessWidget {
     required this.likes,
     required this.comments,
     required this.liked,
+    required this.bookmarked,
     required this.onLike,
     required this.onComment,
     required this.onQuote,
+    required this.onTag,
+    required this.onBookmark,
+    required this.onReport,
   });
 
   @override
@@ -818,19 +1332,93 @@ class _PostCardX extends StatelessWidget {
                           time,
                           style: const TextStyle(color: Colors.grey, fontSize: 14),
                         ),
+                        const Spacer(),
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_horiz, color: Colors.grey, size: 20),
+                          color: const Color(0xFF1A1A2E),
+                          onSelected: (v) {
+                            if (v == 'bookmark') onBookmark();
+                            if (v == 'report') onReport();
+                          },
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                              value: 'bookmark',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    bookmarked
+                                        ? Icons.bookmark
+                                        : Icons.bookmark_border,
+                                    color: const Color(0xFF7C3AED),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    bookmarked ? 'Убрать из закладок' : 'В закладки',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'report',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.flag_outlined,
+                                      color: Colors.redAccent, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Пожаловаться',
+                                      style: TextStyle(color: Colors.white)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                     if (parsed.text.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
                         parsed.text,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.35),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 15, height: 1.35),
                       ),
-                    ] else if (!parsed.hasMedia && !parsed.hasQuote) ...[
+                    ] else if (!parsed.hasMedia &&
+                        !parsed.hasQuote &&
+                        !parsed.hasVoice &&
+                        !parsed.hasAttachments) ...[
                       const SizedBox(height: 6),
                       Text(
                         _stripCodec(rawFallback),
-                        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.35),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 15, height: 1.35),
+                      ),
+                    ],
+                    if (parsed.hasTags) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: parsed.tags
+                            .map(
+                              (t) => InkWell(
+                                onTap: () => onTag(t),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 2, vertical: 1),
+                                  child: Text(
+                                    '#$t',
+                                    style: const TextStyle(
+                                      color: Color(0xFF7C3AED),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
                     ],
                     if (parsed.hasQuote) _QuoteBlock(data: parsed),
@@ -850,6 +1438,23 @@ class _PostCardX extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (parsed.hasVoice) ...[
+                      const SizedBox(height: 10),
+                      VoicePlayer(
+                        url: parsed.audioUrl!,
+                        durationMs: parsed.audioDurationMs,
+                      ),
+                    ],
+                    if (parsed.hasAttachments) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: parsed.attachments
+                            .map((a) => AttachmentTile(meta: a))
+                            .toList(),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -866,9 +1471,12 @@ class _PostCardX extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: Row(
                     children: [
-                      const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.grey),
+                      const Icon(Icons.chat_bubble_outline,
+                          size: 18, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text('$comments', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                      Text('$comments',
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -881,7 +1489,8 @@ class _PostCardX extends StatelessWidget {
                     children: [
                       Icon(Icons.repeat, size: 18, color: Colors.grey),
                       SizedBox(width: 4),
-                      Text('Цитата', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      Text('Цитата',
+                          style: TextStyle(color: Colors.grey, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -907,6 +1516,18 @@ class _PostCardX extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: onBookmark,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Icon(
+                    bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                    size: 18,
+                    color: bookmarked ? const Color(0xFF7C3AED) : Colors.grey,
                   ),
                 ),
               ),
@@ -961,7 +1582,8 @@ class _QuoteBlock extends StatelessWidget {
               preview,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.3),
+              style:
+                  const TextStyle(color: Colors.grey, fontSize: 13, height: 1.3),
             ),
         ],
       ),

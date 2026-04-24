@@ -3,14 +3,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileService {
   final _client = Supabase.instance.client;
+  static const List<String> _userTables = ['User', 'users', 'user', '"User"'];
 
   // ? Описание
   Future<Map<String, dynamic>> getProfileData(String userId) async {
-    final user = await _client
-        .from('User')
-        .select('id, email, login, username, scope, avatar, created_at')
-        .eq('id', userId)
-        .maybeSingle();
+    final user = await _selectUserById(userId);
 
     if (user == null) {
       throw Exception('Профиль не найден в базе данных');
@@ -37,6 +34,22 @@ class ProfileService {
       'rating': 4.9,
       'joinedAt': user['created_at'],
     };
+  }
+
+  Future<Map<String, dynamic>?> _selectUserById(String userId) async {
+    for (final table in _userTables) {
+      try {
+        final row = await _client
+            .from(table)
+            .select('id, email, login, username, scope, avatar, created_at')
+            .eq('id', userId)
+            .maybeSingle();
+        if (row != null) return Map<String, dynamic>.from(row);
+      } catch (e) {
+        debugPrint('ProfileService user table miss "$table": $e');
+      }
+    }
+    return null;
   }
 
   /// Таблица [Notification] в схеме; при отличии регистра в PostgREST пробуем [notification].

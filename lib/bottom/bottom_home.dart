@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/auction_service.dart';
 import '../database/digiseller_api.dart';
 import '../database/post_content_codec.dart';
+import '../widgets/notification_bell.dart';
 import 'mini_page/user_profile_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -16,6 +17,7 @@ class BottomHome extends StatefulWidget {
 class _BottomHomeState extends State<BottomHome> {
   final SupabaseClient supabase = Supabase.instance.client;
   final DigisellerApiService _api = DigisellerApiService();
+  static const List<String> _userTables = ['User', 'users', 'user', '"User"'];
   
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
@@ -98,11 +100,18 @@ class _BottomHomeState extends State<BottomHome> {
 
     try {
       // Поиск по пользователям (логин и имя)
-      final userResults = await supabase
-          .from('User')
-          .select('id, username, avatar, login')
-          .or('username.ilike.%$query%,login.ilike.%$query%')
-          .limit(8);
+      List<dynamic> userResults = const [];
+      for (final table in _userTables) {
+        try {
+          final rows = await supabase
+              .from(table)
+              .select('id, username, avatar, login')
+              .or('username.ilike.%$query%,login.ilike.%$query%')
+              .limit(8);
+          userResults = rows;
+          break;
+        } catch (_) {}
+      }
 
       // Поиск по постам
       final postResults = await supabase
@@ -189,13 +198,25 @@ class _BottomHomeState extends State<BottomHome> {
   }
 
   Widget _buildHeader() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 60, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Добро пожаловать 👋', style: TextStyle(color: Color(0xFF8888AA), fontSize: 15)),
-          Text('GameVault', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white)),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 60, 12, 16),
+      child: Row(
+        children: const [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Добро пожаловать 👋',
+                    style: TextStyle(color: Color(0xFF8888AA), fontSize: 15)),
+                Text('GameVault',
+                    style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white)),
+              ],
+            ),
+          ),
+          NotificationBell(),
         ],
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../database/services/chat_service.dart';
+import '../widgets/notification_bell.dart';
 import 'mini_page/chat_screen.dart';
 
 // ? Чаты: личные, каналы, группы (как в Telegram) + обзор для вступления
@@ -235,14 +236,21 @@ class _BottomChatState extends State<BottomChat> with TickerProviderStateMixin {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 60, 20, 8),
-          child: Text(
-            'Сообщения',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
+          padding: EdgeInsets.fromLTRB(20, 60, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Сообщения',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              NotificationBell(),
+            ],
           ),
         ),
         Padding(
