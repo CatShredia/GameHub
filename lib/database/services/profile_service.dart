@@ -27,8 +27,10 @@ class ProfileService {
     final activeAuctions = auctions.where((a) => a['is_active'] == true).length;
     final completedAuctions = auctions.length - activeAuctions;
 
+    final scope = (user['scope'] as num?)?.toInt() ?? 0;
     return {
       'user': user,
+      'points': scope,
       'postsCount': postsCount,
       'activeAuctions': activeAuctions,
       'completedAuctions': completedAuctions,
@@ -37,45 +39,56 @@ class ProfileService {
     };
   }
 
-  // ? Описание
+  /// Таблица [Notification] в схеме; при отличии регистра в PostgREST пробуем [notification].
   Future<List<Map<String, dynamic>>> getNotifications(String userId) async {
-    try {
+    Future<List<Map<String, dynamic>>> run(String table) async {
       final response = await _client
-          .from('Notification')
+          .from(table)
           .select('id, title, content, is_watched, created_at')
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .limit(50);
-
-      return response;
-    } catch (e) {
-      debugPrint('Ошибка загрузки уведомлений: $e');
-      return [];
+      return List<Map<String, dynamic>>.from(response as List);
     }
-  }
 
-  // ? Описание
-  Future<void> markNotificationAsRead(String notificationId) async {
     try {
-      await _client
-          .from('Notification')
-          .update({'is_watched': true})
-          .eq('id', notificationId);
+      return await run('Notification');
     } catch (e) {
-      debugPrint('Ошибка обновления уведомления: $e');
+      debugPrint('getNotifications(Notification): $e');
+    }
+    try {
+      return await run('notification');
+    } catch (e) {
+      debugPrint('getNotifications(notification): $e');
+      rethrow;
     }
   }
 
-  // ? Описание
+  Future<void> markNotificationAsRead(dynamic notificationId) async {
+    for (final t in ['Notification', 'notification']) {
+      try {
+        await _client
+            .from(t)
+            .update({'is_watched': true})
+            .eq('id', notificationId);
+        return;
+      } catch (e) {
+        debugPrint('markNotificationAsRead from $t: $e');
+      }
+    }
+  }
+
   Future<void> markAllNotificationsAsRead(String userId) async {
-    try {
-      await _client
-          .from('Notification')
-          .update({'is_watched': true})
-          .eq('user_id', userId)
-          .eq('is_watched', false);
-    } catch (e) {
-      debugPrint('Ошибка обновления всех уведомлений: $e');
+    for (final t in ['Notification', 'notification']) {
+      try {
+        await _client
+            .from(t)
+            .update({'is_watched': true})
+            .eq('user_id', userId);
+        return;
+      } catch (e) {
+        debugPrint('markAll from $t: $e');
+      }
     }
   }
 

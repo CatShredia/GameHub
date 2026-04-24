@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/services/profile_service.dart';
 import 'mini_page/auctions_list_page.dart';
 import 'mini_page/edit_profile_page.dart';
+import 'mini_page/notifications_sheet.dart';
 import 'mini_page/reate_auction_page.dart';
 
 // ? Страница профиля пользователя
@@ -19,9 +20,7 @@ class BottomProfile extends StatefulWidget {
 class _BottomProfileState extends State<BottomProfile> {
   final _profileService = ProfileService();
   Map<String, dynamic>? _profileData;
-  List<Map<String, dynamic>> _notifications = [];
   bool _loading = true;
-  bool _notificationsLoading = false;
   String? _error;
 
   @override
@@ -79,30 +78,7 @@ class _BottomProfileState extends State<BottomProfile> {
     }
   }
 
-  // ? Загружает уведомления пользователя
-  Future<void> _loadNotifications() async {
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
-
-      setState(() => _notificationsLoading = true);
-      _notifications = await _profileService.getNotifications(user.id);
-
-      if (mounted) {
-        setState(() => _notificationsLoading = false);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _notificationsLoading = false);
-      }
-    }
-  }
-
-  // ? Показывает bottom sheet с уведомлениями
-  void _showNotificationsBottomSheet() {
-    setState(() => _notifications = []);
-    _loadNotifications();
-
+  void _openNotifications() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -110,139 +86,8 @@ class _BottomProfileState extends State<BottomProfile> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: const EdgeInsets.all(20),
-          height: MediaQuery.of(context).size.height * 0.7,
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '🔔 Уведомления',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _notifications.isNotEmpty
-                        ? () async {
-                            final user =
-                                Supabase.instance.client.auth.currentUser;
-                            if (user != null) {
-                              await _profileService.markAllNotificationsAsRead(
-                                user.id,
-                              );
-                              setModalState(() {
-                                for (var n in _notifications) {
-                                  n['is_watched'] = true;
-                                }
-                              });
-                            }
-                          }
-                        : null,
-                    child: const Text(
-                      'Все проч.',
-                      style: TextStyle(color: Color(0xFF7C3AED)),
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(color: Colors.white24),
-              _notificationsLoading
-                  ? const Expanded(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : _notifications.isEmpty
-                  ? const Expanded(
-                      child: Center(
-                        child: Text(
-                          'Нет новых уведомлений',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-                    )
-                  : Expanded(
-                      child: ListView.separated(
-                        itemCount: _notifications.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(color: Colors.white12, height: 1),
-                        itemBuilder: (context, index) {
-                          final notif = _notifications[index];
-                          final isRead = notif['is_watched'] == true;
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              backgroundColor: isRead
-                                  ? Colors.grey.withOpacity(0.3)
-                                  : const Color(0xFF7C3AED),
-                              child: Text(
-                                !isRead ? '•' : '✓',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ),
-                            title: Text(
-                              notif['title'] ?? 'Без заголовка',
-                              style: TextStyle(
-                                fontWeight: isRead
-                                    ? FontWeight.normal
-                                    : FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              notif['content'] ?? '',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
-                              ),
-                            ),
-                            trailing: Text(
-                              _formatDate(notif['created_at']),
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 10,
-                              ),
-                            ),
-                            onTap: () async {
-                              await _profileService.markNotificationAsRead(
-                                notif['id'],
-                              );
-                              setModalState(() {
-                                _notifications[index]['is_watched'] = true;
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-            ],
-          ),
-        ),
-      ),
+      builder: (context) => NotificationsSheet(profileService: _profileService),
     );
-  }
-
-  // ? Форматирует дату в читаемый вид
-  String _formatDate(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      final diff = DateTime.now().difference(date);
-      if (diff.inMinutes < 1) return 'только что';
-      if (diff.inHours < 1) return '${diff.inMinutes} мин.';
-      if (diff.inDays < 1) return '${diff.inHours} ч.';
-      return '${date.day}.${date.month}';
-    } catch (_) {
-      return dateStr;
-    }
   }
 
   // ? Склоняет существительные по числам
@@ -368,7 +213,8 @@ class _BottomProfileState extends State<BottomProfile> {
           ),
           Text(
             '@${user['login'] ?? 'no_login'} • '
-            '$yearsOnPlatform ${_pluralize(yearsOnPlatform, 'год', 'года', 'лет')}',
+            '$yearsOnPlatform ${_pluralize(yearsOnPlatform, 'год', 'года', 'лет')} • '
+            '$postsCount ${_pluralize(postsCount, 'пост', 'поста', 'постов')}',
             style: const TextStyle(color: Colors.grey, fontSize: 13),
             textAlign: TextAlign.center,
           ),
@@ -506,7 +352,7 @@ class _BottomProfileState extends State<BottomProfile> {
             icon: '🔔',
             title: 'Уведомления',
             subtitle: 'История оповещений',
-            onTap: _showNotificationsBottomSheet,
+            onTap: _openNotifications,
           ),
           _ProfileMenuItem(
             icon: '🚪',

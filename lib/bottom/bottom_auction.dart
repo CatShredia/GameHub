@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../database/auction_service.dart';
 import 'mini_page/reate_auction_page.dart';
 
-// ? Страница аукционов с live-аукционами и ближайшими
+// ? Аукционы: список активных лотов, ставка продлевает окончание на 2 минуты
 class BottomAuction extends StatefulWidget {
   const BottomAuction({super.key});
 
@@ -14,16 +17,25 @@ class BottomAuction extends StatefulWidget {
 class _BottomAuctionState extends State<BottomAuction> {
   bool _isLoading = true;
   String? _error;
-  Map<String, dynamic>? _liveAuction;
-  List<Map<String, dynamic>> _upcomingAuctions = [];
+  List<Map<String, dynamic>> _auctions = [];
+  final Map<int, int> _maxBidByAuction = {};
+  Timer? _tick;
 
   @override
   void initState() {
     super.initState();
     _loadAuctions();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
-  // ? Загружает live-аукцион и ближайшие аукционы
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
   Future<void> _loadAuctions() async {
     try {
       setState(() {
@@ -32,10 +44,11 @@ class _BottomAuctionState extends State<BottomAuction> {
       });
 
       final client = Supabase.instance.client;
+      await AuctionService.instance.finalizeExpiredAuctions();
+
       final now = DateTime.now().toIso8601String();
 
-      // ? LIVE аукцион — один активный с ближайшим окончанием
-      final liveResponse = await client
+      final res = await client
           .from('Auction_items')
           .select('''
             id,
@@ -53,35 +66,31 @@ class _BottomAuctionState extends State<BottomAuction> {
           ''')
           .eq('is_active', true)
           .gt('ended_at', now)
-          .order('ended_at', ascending: true)
-          .limit(1);
+          .order('ended_at', ascending: true);
 
-      // ? Ближайшие аукционы — до 4 штук
-      final upcomingResponse = await client
-          .from('Auction_items')
-          .select('''
-            id,
-            title,
-            url_item,
-            start_price,
-            bid_count,
-            ended_at,
-            is_active,
-            owner_id,
-            User!auction_items_owner_id_fkey (
-              username,
-              login
-            )
-          ''')
-          .eq('is_active', true)
-          .gt('ended_at', now)
-          .order('ended_at', ascending: true)
-          .limit(4);
+      final list = List<Map<String, dynamic>>.from(res);
+      final ids = list.map((e) => (e['id'] as num).toInt()).toList();
+
+      final Map<int, int> maxBids = {};
+      if (ids.isNotEmpty) {
+        final bids = await client
+            .from('Bid_auction')
+            .select('auction_id, new_price');
+        final idSet = ids.toSet();
+        for (final b in List<Map<String, dynamic>>.from(bids)) {
+          final aid = (b['auction_id'] as num).toInt();
+          if (!idSet.contains(aid)) continue;
+          final p = (b['new_price'] as num).toInt();
+          if ((maxBids[aid] ?? 0) < p) maxBids[aid] = p;
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _liveAuction = liveResponse.isNotEmpty ? liveResponse.first : null;
-          _upcomingAuctions = upcomingResponse;
+          _auctions = list;
+          _maxBidByAuction
+            ..clear()
+            ..addAll(maxBids);
           _isLoading = false;
         });
       }
@@ -95,7 +104,10 @@ class _BottomAuctionState extends State<BottomAuction> {
     }
   }
 
-  // ? Форматирует число очков с пробелами
+  int _currentPrice(int auctionId, int startPrice) {
+    return _maxBidByAuction[auctionId] ?? startPrice;
+  }
+
   String _formatPoints(int points) {
     return points.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -103,7 +115,6 @@ class _BottomAuctionState extends State<BottomAuction> {
     );
   }
 
-  // ? Форматирует оставшееся время аукциона
   String _formatTimeRemaining(String endedAt) {
     try {
       final end = DateTime.parse(endedAt);
@@ -123,6 +134,85 @@ class _BottomAuctionState extends State<BottomAuction> {
     }
   }
 
+  Future<void> _onBid(
+    int auctionId,
+    int startPrice, {
+    required String title,
+  }) async {
+    final me = Supabase.instance.client.auth.currentUser?.id;
+    final price = _currentPrice(auctionId, startPrice);
+    final next = price + 50;
+
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: Text(
+          'Ставка: $title',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        content: Text(
+          'Следующая цена: ${_formatPoints(next)} ⭐\n'
+          'К аукциону прибавится 2 минуты.',
+          style: const TextStyle(color: Colors.white70, height: 1.3),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
+            child: const Text('Поставить'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    if (me == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Войдите в аккаунт')),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
+        ),
+      );
+    }
+
+    final err = await AuctionService.instance.placeBid(auctionId: auctionId);
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
+    if (err != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err)),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ставка принята, +2 мин к аукциону'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      await _loadAuctions();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -134,7 +224,6 @@ class _BottomAuctionState extends State<BottomAuction> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ? Заголовок с градиентом и кнопкой создания
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
@@ -147,11 +236,11 @@ class _BottomAuctionState extends State<BottomAuction> {
                 ),
                 child: Row(
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             '🔨 Аукцион игр',
                             style: TextStyle(
                               fontSize: 28,
@@ -159,9 +248,9 @@ class _BottomAuctionState extends State<BottomAuction> {
                               color: Colors.white,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Покупай и продавай игры за очки',
+                          SizedBox(height: 4),
+                          Text(
+                            'Создай лот или сделай ставку (+2 мин к таймеру)',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 14,
@@ -195,9 +284,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 20),
-
               if (_isLoading)
                 const Center(child: CircularProgressIndicator())
               else if (_error != null)
@@ -208,6 +295,7 @@ class _BottomAuctionState extends State<BottomAuction> {
                       Text(
                         '⚠️ $_error',
                         style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
@@ -220,344 +308,93 @@ class _BottomAuctionState extends State<BottomAuction> {
                     ],
                   ),
                 )
-              else
-                Column(
-                  children: [
-                    // ? LIVE аукцион
-                    if (_liveAuction != null) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    size: 8,
-                                    color: Colors.white,
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'LIVE',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Идёт прямо сейчас',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
+              else if (_auctions.isEmpty)
+                Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(40),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.gavel, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Сейчас нет активных аукционов',
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF2A1212), Color(0xFF1E0A1E)],
-                            ),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: Colors.red.withOpacity(0.3),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.red.withOpacity(0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Container(
-                                height: 160,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.4),
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(22),
-                                  ),
-                                ),
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    _liveAuction!['url_item'] != null &&
-                                            _liveAuction!['url_item']
-                                                .toString()
-                                                .isNotEmpty
-                                        ? ClipRRect(
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                  top: Radius.circular(22),
-                                                ),
-                                            child: Image.network(
-                                              _liveAuction!['url_item'],
-                                              width: double.infinity,
-                                              height: 160,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Text(
-                                                    '🎮',
-                                                    style: TextStyle(
-                                                      fontSize: 80,
-                                                    ),
-                                                  ),
-                                            ),
-                                          )
-                                        : const Text(
-                                            '🎮',
-                                            style: TextStyle(fontSize: 80),
-                                          ),
-                                  ],
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _liveAuction!['title'] ?? 'Без названия',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Продавец: @${_liveAuction!['User']?['login'] ?? 'Unknown'}',
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    if (_liveAuction!['steam_url'] != null) ...[
-                                      const SizedBox(height: 8),
-                                      InkWell(
-                                        onTap: () {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Открытие Steam...',
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.link,
-                                              size: 16,
-                                              color: Color(0xFF3B82F6),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            const Text(
-                                              'Страница в Steam',
-                                              style: TextStyle(
-                                                color: Color(0xFF3B82F6),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 16),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceAround,
-                                        children: [
-                                          _StatItem(
-                                            label: 'Текущая ставка',
-                                            value:
-                                                "${_formatPoints(_liveAuction!['start_price'] ?? 0)} ⭐",
-                                            color: const Color(0xFF34D399),
-                                            icon: Icons.star,
-                                          ),
-                                          _StatItem(
-                                            label: 'Ставок',
-                                            value:
-                                                "${_liveAuction!['bid_count'] ?? 0}",
-                                            icon: Icons.trending_up,
-                                          ),
-                                          _StatItem(
-                                            label: 'До конца',
-                                            value: _formatTimeRemaining(
-                                              _liveAuction!['ended_at'] ?? '',
-                                            ),
-                                            color: Colors.red,
-                                            icon: Icons.timer,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Функция ставок в разработке',
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 16,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '⚡ Сделать ставку — '
-                                          '${_formatPoints((_liveAuction!['start_price'] ?? 0) + 50)} ⭐',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Создай аукцион — его увидят все',
+                        style: TextStyle(color: Colors.white54, fontSize: 14),
                       ),
-                    ] else ...[
-                      // ? Пустое состояние — нет активных аукционов
-                      Container(
-                        margin: const EdgeInsets.all(20),
-                        padding: const EdgeInsets.all(40),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A2E),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.gavel,
-                              size: 64,
-                              color: Colors.grey,
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CreateAuctionPage(),
                             ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Сейчас нет активных аукционов',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Будь первым — создай аукцион!',
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const CreateAuctionPage(),
-                                  ),
-                                ).then((_) => _loadAuctions());
-                              },
-                              icon: const Icon(Icons.add),
-                              label: const Text('Создать аукцион'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF7C3AED),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 12,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ).then((_) => _loadAuctions());
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Создать аукцион'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF7C3AED),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ],
-
-                    // ? Список ближайших аукционов
-                    if (_upcomingAuctions.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          '⏳ Ближайшие аукционы',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      ..._upcomingAuctions.map(
-                        (auction) => _AuctionListItem(
-                          title: auction['title'] ?? 'Без названия',
-                          meta:
-                              "${auction['bid_count'] ?? 0} ставок • "
-                              '@${auction['User']?['login'] ?? 'Unknown'}',
-                          points:
-                              '${_formatPoints(auction['start_price'] ?? 0)} ⭐',
-                          time: _formatTimeRemaining(auction['ended_at'] ?? ''),
-                          imageUrl: auction['url_item'],
-                          steamUrl: auction['steam_url'],
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 100),
-                  ],
+                  ),
+                )
+              else ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Активные аукционы',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
+                const SizedBox(height: 12),
+                ..._auctions.map((a) {
+                  final id = (a['id'] as num).toInt();
+                  final start = (a['start_price'] as num).toInt();
+                  final cur = _currentPrice(id, start);
+                  final title = a['title'] as String? ?? 'Лот';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: _AuctionCardDb(
+                      title: title,
+                      seller:
+                          '@${(a['User'] as Map<String, dynamic>?)?['login'] ?? 'unknown'}',
+                      imageUrl: a['url_item'] as String? ?? '',
+                      bidCount: (a['bid_count'] as num?)?.toInt() ?? 0,
+                      timeLeft: _formatTimeRemaining('${a['ended_at']}'),
+                      currentPoints: _formatPoints(cur),
+                      onBid: () => _onBid(
+                        id,
+                        start,
+                        title: title,
+                      ),
+                    ),
+                  );
+                }),
+              ],
+              const SizedBox(height: 100),
             ],
           ),
         ),
       ),
-      // ? FAB кнопка создания аукциона
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -573,15 +410,139 @@ class _BottomAuctionState extends State<BottomAuction> {
   }
 }
 
-// ? Элемент статистики в карточке аукциона
-class _StatItem extends StatelessWidget {
+class _AuctionCardDb extends StatelessWidget {
+  final String title;
+  final String seller;
+  final String imageUrl;
+  final int bidCount;
+  final String timeLeft;
+  final String currentPoints;
+  final VoidCallback onBid;
+
+  const _AuctionCardDb({
+    required this.title,
+    required this.seller,
+    required this.imageUrl,
+    required this.bidCount,
+    required this.timeLeft,
+    required this.currentPoints,
+    required this.onBid,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2A1212), Color(0xFF1E0A1E)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.red.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withOpacity(0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            child: SizedBox(
+              height: 140,
+              child: imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Text('🎮', style: TextStyle(fontSize: 64)),
+                      ),
+                    )
+                  : const Center(
+                      child: Text('🎮', style: TextStyle(fontSize: 64)),
+                    ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Продавец: $seller',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _MiniStat(
+                      label: 'Текущая',
+                      value: '$currentPoints ⭐',
+                      color: const Color(0xFF34D399),
+                      icon: Icons.star,
+                    ),
+                    _MiniStat(
+                      label: 'Ставок',
+                      value: '$bidCount',
+                      icon: Icons.trending_up,
+                    ),
+                    _MiniStat(
+                      label: 'До конца',
+                      value: timeLeft,
+                      color: Colors.red,
+                      icon: Icons.timer,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: onBid,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Сделать ставку',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
   final IconData icon;
 
-  const _StatItem({
-    super.key,
+  const _MiniStat({
     required this.label,
     required this.value,
     this.color,
@@ -597,132 +558,13 @@ class _StatItem extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.bold,
             color: color ?? Colors.white,
           ),
         ),
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
       ],
-    );
-  }
-}
-
-// ? Элемент списка ближайших аукционов
-class _AuctionListItem extends StatelessWidget {
-  final String title;
-  final String meta;
-  final String points;
-  final String time;
-  final String? imageUrl;
-  final String? steamUrl;
-
-  const _AuctionListItem({
-    super.key,
-    required this.title,
-    required this.meta,
-    required this.points,
-    required this.time,
-    this.imageUrl,
-    this.steamUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1430), Color(0xFF2D1B69)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: const Color(0xFF2D1B69),
-            ),
-            child: imageUrl != null && imageUrl!.isNotEmpty
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.network(
-                      imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(
-                        child: Text('🎮', style: TextStyle(fontSize: 24)),
-                      ),
-                    ),
-                  )
-                : const Center(
-                    child: Text('🎮', style: TextStyle(fontSize: 24)),
-                  ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  meta,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                if (steamUrl != null) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.link,
-                        size: 12,
-                        color: Color(0xFF3B82F6),
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Steam',
-                        style: TextStyle(
-                          color: Color(0xFF3B82F6),
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                points,
-                style: const TextStyle(
-                  color: Color(0xFFF59E0B),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              Text(
-                '⏰ $time',
-                style: const TextStyle(color: Colors.redAccent, fontSize: 11),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

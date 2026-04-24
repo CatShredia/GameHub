@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../database/auction_service.dart';
 import '../database/digiseller_api.dart';
+import '../database/post_content_codec.dart';
+import 'mini_page/user_profile_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class BottomHome extends StatefulWidget {
@@ -34,6 +37,8 @@ class _BottomHomeState extends State<BottomHome> {
   Future<void> _loadInitialData() async {
     setState(() => _isLoadingData = true);
     try {
+      await AuctionService.instance.finalizeExpiredAuctions();
+
       // 1. Загрузка активных аукционов
       final auctionData = await supabase
           .from('Auction_items')
@@ -92,12 +97,12 @@ class _BottomHomeState extends State<BottomHome> {
     });
 
     try {
-      // Поиск по пользователям
+      // Поиск по пользователям (логин и имя)
       final userResults = await supabase
           .from('User')
-          .select('username, avatar')
-          .ilike('username', '%$query%')
-          .limit(3);
+          .select('id, username, avatar, login')
+          .or('username.ilike.%$query%,login.ilike.%$query%')
+          .limit(8);
 
       // Поиск по постам
       final postResults = await supabase
@@ -260,7 +265,7 @@ class _BottomHomeState extends State<BottomHome> {
           ),
           const SizedBox(height: 12),
           Text(
-            _bestPost!['content'] ?? '',
+            decodePostContent(_bestPost!['content'] as String? ?? '').text,
             style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
@@ -356,7 +361,9 @@ class _BottomHomeState extends State<BottomHome> {
 
         if (item['type'] == 'user') {
           iconData = Icons.person;
-          title = item['username'];
+          final u = item['username'] as String? ?? '';
+          final l = item['login'] as String? ?? '';
+          title = l.isNotEmpty ? '@$l' : u;
         } else if (item['type'] == 'product') {
           iconData = Icons.shopping_cart;
           title = item['name'];
@@ -376,6 +383,16 @@ class _BottomHomeState extends State<BottomHome> {
           onTap: () {
             if (item['type'] == 'product') {
               _handlePurchase(item['id'], item['buy_url']);
+            } else if (item['type'] == 'user') {
+              final uid = item['id'] as String?;
+              if (uid != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UserProfilePage(userId: uid),
+                  ),
+                );
+              }
             }
           },
         );
