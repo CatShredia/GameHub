@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GameVault Mobile Prototype</title>
+    <style>
+      :root {
+        --bg: #0f0f1a;
+        --bg2: #0d0d1a;
+        --surface: #1a1a2e;
+        --surface2: #1a1430;
+        --card: rgba(255, 255, 255, 0.055);
+        --stroke: rgba(255, 255, 255, 0.1);
+        --muted: #8888aa;
+        --muted2: #a1a1b8;
+        --violet: #7c3aed;
+        --violet2: #8b5cf6;
+        --pink: #ec4899;
+        --blue: #3b82f6;
+        --green: #34d399;
+        --orange: #f59e0b;
+        --red: #ef4444;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: white;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Arial,
+          sans-serif;
+        background:
+          radial-gradient(
+            circle at 12% 10%,
+            rgba(124, 58, 237, 0.28),
+            transparent 30rem
+          ),
+          radial-gradient(
+            circle at 84% 16%,
+            rgba(236, 72, 153, 0.18),
+            transparent 30rem
+          ),
+          radial-gradient(
+            circle at 52% 90%,
+            rgba(59, 130, 246, 0.14),
+            transparent 32rem
+          ),
+          var(--bg);
+      }
+
+      button,
+      .tap {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .page {
+        width: min(1040px, calc(100% - 28px));
+        margin: 0 auto;
+        padding: 34px 0 56px;
+      }
+
+      .topline,
+      .appbar,
+      .row,
+      .meta,
+      .tabs,
+      .actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .topline {
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+
+      .brand {
+        gap: 12px;
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+
+      .brand-icon,
+      .avatar,
+      .icon-box,
+      .nav button,
+      .back,
+      .small-action {
+        display: grid;
+        place-items: center;
+      }
+
+      .brand-icon {
+        width: 54px;
+        height: 54px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, var(--violet), var(--pink));
+        box-shadow: 0 0 34px rgba(124, 58, 237, 0.38);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: 1px solid var(--stroke);
+        border-radius: 999px;
+        color: var(--muted2);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 13px;
+        font-weight: 800;
+        backdrop-filter: blur(14px);
+      }
+
+      .intro {
+        max-width: 720px;
+        margin: 0 auto 28px;
+        text-align: center;
+      }
+
+      .intro h1 {
+        margin: 12px 0;
+        font-size: clamp(34px, 7vw, 58px);
+        line-height: 0.98;
+        letter-spacing: -0.07em;
+      }
+
+      .intro p {
+        margin: 0;
+        color: var(--muted2);
+        font-size: 17px;
+        line-height: 1.6;
+      }
+
+      .gradient-text {
+        color: transparent;
+        background: linear-gradient(135deg, var(--violet2), var(--pink));
+        -webkit-background-clip: text;
+        background-clip: text;
+      }
+
+      .phone-wrap {
+        display: grid;
+        place-items: center;
+      }
+
+      .phone {
+        position: relative;
+        width: min(390px, 100%);
+        height: 812px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 42px;
+        background:
+          radial-gradient(
+            circle at 42% 0%,
+            rgba(124, 58, 237, 0.18),
+            transparent 19rem
+          ),
+          linear-gradient(
+            145deg,
+            rgba(26, 26, 46, 0.96),
+            rgba(13, 13, 26, 0.98)
+          );
+        box-shadow:
+          0 24px 80px rgba(0, 0, 0, 0.44),
+          0 0 0 10px rgba(255, 255, 255, 0.03);
+      }
+
+      .phone::before {
+        content: "";
+        position: absolute;
+        top: 14px;
+        left: 50%;
+        z-index: 6;
+        width: 116px;
+        height: 28px;
+        border-radius: 999px;
+        transform: translateX(-50%);
+        background: #060611;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+
+      .screen {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .view {
+        display: none;
+        height: 100%;
+        overflow-y: auto;
+        padding: 60px 20px 112px;
+        scrollbar-width: none;
+      }
+
+      .view::-webkit-scrollbar {
+        display: none;
+      }
+
+      .view.active {
+        display: block;
+      }
+
+      .view.auth {
+        align-content: center;
+        padding: 0 24px;
+      }
+
+      .view.auth.active {
+        display: grid;
+      }
+
+      .auth-logo {
+        justify-self: center;
+        margin-bottom: 40px;
+        padding: 20px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, var(--violet), var(--pink));
+        box-shadow: 0 0 34px rgba(124, 58, 237, 0.38);
+        font-size: 28px;
+        font-weight: 900;
+      }
+
+      .field,
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 52px;
+        padding: 0 14px;
+        border: 2px solid transparent;
+        border-radius: 15px;
+        color: #9ca3af;
+        background: var(--surface);
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      .field.focus {
+        border-color: var(--violet);
+      }
+
+      .link {
+        color: var(--violet);
+        font-weight: 800;
+      }
+
+      .auth-link {
+        margin: -6px 0 24px;
+        text-align: right;
+        font-size: 14px;
+      }
+
+      .button {
+        min-height: 52px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        border: 0;
+        border-radius: 15px;
+        color: white;
+        background: var(--violet);
+        box-shadow: 0 12px 28px rgba(124, 58, 237, 0.34);
+        font: inherit;
+        font-weight: 900;
+      }
+
+      .button.secondary {
+        border: 1px solid var(--stroke);
+        background: rgba(255, 255, 255, 0.06);
+        box-shadow: none;
+      }
+
+      .auth-copy {
+        margin-top: 20px;
+        color: #9ca3af;
+        text-align: center;
+        font-size: 14px;
+      }
+
+      .appbar {
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .appbar h2 {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: -0.03em;
+      }
+
+      .back,
+      .small-action {
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        color: white;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .welcome {
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .title {
+        margin: 2px 0 18px;
+        font-size: 32px;
+        font-weight: 900;
+        letter-spacing: -0.05em;
+      }
+
+      .notification {
+        position: relative;
+      }
+
+      .notification::after {
+        content: "";
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--red);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 24px 0 12px;
+      }
+
+      .section-head h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .section-head span {
+        color: var(--violet2);
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .card,
+      .feed-card,
+      .menu-row,
+      .detail-card,
+      .sheet {
+        border: 1px solid var(--stroke);
+        border-radius: 20px;
+        background: var(--card);
+      }
+
+      .card,
+      .feed-card,
+      .detail-card {
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+
+      .feed-card {
+        background: rgba(26, 20, 48, 0.88);
+      }
+
+      .row {
+        gap: 12px;
+      }
+
+      .meta {
+        justify-content: space-between;
+        gap: 10px;
+        color: #9ca3af;
+        font-size: 12px;
+      }
+
+      .muted {
+        color: #9ca3af;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: var(--violet);
+      }
+
+      .icon-box {
+        min-width: 42px;
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: rgba(124, 58, 237, 0.16);
+        font-size: 22px;
+      }
+
+      .chips,
+      .h-scroll {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+
+      .chips::-webkit-scrollbar,
+      .h-scroll::-webkit-scrollbar {
+        display: none;
+      }
+
+      .chip {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+        border: 1px solid var(--stroke);
+        border-radius: 999px;
+        color: var(--muted2);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .chip.active {
+        color: white;
+        border-color: rgba(124, 58, 237, 0.58);
+        background: rgba(124, 58, 237, 0.32);
+      }
+
+      .auction-card {
+        flex: 0 0 160px;
+        height: 190px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .auction-emoji {
+        font-size: 34px;
+      }
+
+      .price {
+        color: var(--orange);
+        font-weight: 900;
+      }
+
+      .green {
+        color: var(--green);
+        font-weight: 900;
+      }
+
+      .red {
+        color: var(--red);
+        font-weight: 900;
+      }
+
+      .tabs {
+        gap: 8px;
+        margin: 12px 0 14px;
+      }
+
+      .tab {
+        flex: 1;
+        padding: 10px 8px;
+        border-radius: 13px;
+        color: #9ca3af;
+        background: rgba(255, 255, 255, 0.06);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .tab.active {
+        color: white;
+        background: rgba(124, 58, 237, 0.35);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .product-card {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .product-art {
+        display: grid;
+        height: 118px;
+        place-items: center;
+        background:
+          linear-gradient(
+            135deg,
+            rgba(124, 58, 237, 0.26),
+            rgba(59, 130, 246, 0.2)
+          ),
+          #111827;
+        font-size: 42px;
+      }
+
+      .product-card .body {
+        padding: 12px;
+      }
+
+      .buy {
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--violet), #6d28d9);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .composer {
+        padding: 14px;
+      }
+
+      .composer-input {
+        min-height: 76px;
+        align-items: flex-start;
+        padding-top: 13px;
+      }
+
+      .tool-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .tool-row .small-action {
+        color: var(--violet);
+      }
+
+      .menu-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        margin-bottom: 10px;
+      }
+
+      .profile {
+        text-align: center;
+      }
+
+      .profile-avatar {
+        position: relative;
+        display: grid;
+        width: 92px;
+        height: 92px;
+        place-items: center;
+        margin: 0 auto 12px;
+        border-radius: 50%;
+        background: var(--violet);
+        font-size: 48px;
+      }
+
+      .points {
+        position: absolute;
+        right: -8px;
+        bottom: 0;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--orange), var(--red));
+        box-shadow: 0 8px 20px rgba(245, 158, 11, 0.32);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin: 20px 0;
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 22px;
+      }
+
+      .stat span {
+        color: #9ca3af;
+        font-size: 12px;
+      }
+
+      .nav {
+        position: absolute;
+        right: 14px;
+        bottom: 16px;
+        left: 14px;
+        z-index: 5;
+        display: none;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 6px;
+        padding: 10px;
+        border: 1px solid rgba(124, 58, 237, 0.35);
+        border-radius: 26px;
+        background: rgba(15, 10, 36, 0.82);
+        box-shadow:
+          0 0 34px rgba(124, 58, 237, 0.36),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(18px);
+      }
+
+      .nav.show {
+        display: grid;
+      }
+
+      .nav button {
+        min-height: 46px;
+        border: 0;
+        border-radius: 16px;
+        color: #b8b8c8;
+        background: transparent;
+        font-size: 20px;
+      }
+
+      .nav button.active {
+        color: white;
+        background: linear-gradient(
+          135deg,
+          rgba(124, 58, 237, 0.95),
+          rgba(236, 72, 153, 0.72)
+        );
+        box-shadow: 0 0 20px rgba(236, 72, 153, 0.34);
+      }
+
+      .toast {
+        position: absolute;
+        right: 22px;
+        bottom: 92px;
+        left: 22px;
+        z-index: 8;
+        display: none;
+        padding: 13px 14px;
+        border-radius: 14px;
+        background: var(--violet);
+        box-shadow: 0 0 34px rgba(124, 58, 237, 0.36);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .toast.show {
+        display: block;
+      }
+
+      .palette {
+        max-width: 920px;
+        margin: 50px auto 0;
+        padding: 20px;
+        border: 1px solid var(--stroke);
+        border-radius: 24px;
+        background: rgba(26, 26, 46, 0.72);
+        backdrop-filter: blur(16px);
+      }
+
+      .palette h2 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+
+      .palette p {
+        margin: 0 0 14px;
+        color: var(--muted2);
+      }
+
+      .colors {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+
+      .color {
+        min-height: 84px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      @media (max-width: 680px) {
+        .page {
+          width: min(100% - 20px, 420px);
+          padding-top: 22px;
+        }
+
+        .topline {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .intro {
+          text-align: left;
+        }
+
+        .phone {
+          border-radius: 34px;
+        }
+
+        .colors {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="topline">
+        <div class="brand row"></div>
+      </header>
+
+      <section class="intro">
+        <h1>
+          Один экран, <span class="gradient-text">как реальное приложение</span>
+        </h1>
+        <p>
+          Клики по навигации, карточкам, поиску, чатам, аукционам и профилю
+          открывают внутренние страницы в одном корпусе телефона.
+        </p>
+      </section>
+
+      <section class="phone-wrap">
+        <div class="phone">
+          <div class="screen">
+            <section class="view auth active" data-view="auth">
+              <div class="auth-logo">🎮 GameVault</div>
+              <div class="field">✉️ Email</div>
+              <div class="field focus">
+                🔒 Пароль <span style="margin-left: auto">👁️</span>
+              </div>
+              <div class="auth-link link tap" data-open="forgot">
+                Забыли пароль?
+              </div>
+              <button class="button tap" data-open="home">Войти</button>
+              <div class="auth-copy">
+                Нет аккаунта?
+                <span class="link tap" data-open="register"
+                  >Зарегистрироваться</span
+                >
+              </div>
+            </section>
+
+            <section class="view auth" data-view="register">
+              <div class="appbar">
+                <button class="back tap" data-open="auth">‹</button>
+                <h2>Регистрация</h2>
+                <span></span>
+              </div>
+              <div class="field focus">👤 Логин</div>
+              <div class="field">✉️ Email</div>
+              <div class="field">🔒 Пароль</div>
+              <button class="button tap" data-open="home">
+                Создать аккаунт
+              </button>
+              <div class="auth-copy">
+                Уже есть аккаунт?
+                <span class="link tap" data-open="auth">Войти</span>
+              </div>
+            </section>
+
+            <section class="view auth" data-view="forgot">
+              <div class="appbar">
+                <button class="back tap" data-open="auth">‹</button>
+                <h2>Восстановление</h2>
+                <span></span>
+              </div>
+              <p class="muted" style="margin-bottom: 18px">
+                Укажи email, и GameVault отправит ссылку для восстановления
+                доступа.
+              </p>
+              <div class="field focus">✉️ Email</div>
+              <button
+                class="button tap"
+                data-toast="Письмо восстановления отправлено"
+              >
+                Отправить ссылку
+              </button>
+            </section>
+
+            <section class="view" data-view="home">
+              <div class="appbar">
+                <div>
+                  <div class="welcome">Добро пожаловать 👋</div>
+                  <div class="title">GameVault</div>
+                </div>
+                <button
+                  class="small-action notification tap"
+                  data-open="notifications"
+                >
+                  🔔
+                </button>
+              </div>
+              <div class="search tap" data-open="search">
+                🔎 <span>Поиск товаров, постов, юзеров...</span>
+              </div>
+
+              <div class="section-head"><h3>🔥 Лучший пост дня</h3></div>
+              <article class="feed-card tap" data-open="postDetail">
+                <div class="row">
+                  <span class="avatar">😎</span>
+                  <div>
+                    <strong>CatPlayer</strong>
+                    <p class="muted">@catsh · сегодня</p>
+                  </div>
+                  <span style="margin-left: auto; color: var(--orange)">★</span>
+                </div>
+                <p class="muted" style="margin-top: 12px">
+                  Поймал редкий ключ и добавил #обзор. Вложения, голос и цитаты
+                  теперь работают прямо в ленте.
+                </p>
+                <div class="row" style="margin-top: 14px">
+                  <span class="chip">❤ 128</span><span class="chip">💬 24</span
+                  ><span class="chip">#обзор</span>
+                </div>
+              </article>
+
+              <div class="section-head">
+                <h3>⚡ Активные аукционы</h3>
+                <span class="tap" data-open="auction">Все</span>
+              </div>
+              <div class="h-scroll">
+                <article
+                  class="card auction-card tap"
+                  data-auction="Cyberpunk 2077|🎮|1200|37|00:45:30"
+                >
+                  <div class="auction-emoji">🎮</div>
+                  <div style="margin-top: auto">
+                    <strong>Cyberpunk 2077</strong>
+                    <p class="muted">37 ставок</p>
+                    <div class="meta">
+                      <span class="price">1200 ₽</span
+                      ><span class="red">LIVE</span>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="card auction-card tap"
+                  data-auction="RDR 2 Ultimate|🎮|1500|18|02:12:44"
+                >
+                  <div class="auction-emoji">🎮</div>
+                  <div style="margin-top: auto">
+                    <strong>RDR 2 Ultimate</strong>
+                    <p class="muted">18 ставок</p>
+                    <div class="meta">
+                      <span class="price">1500 ₽</span
+                      ><span class="red">LIVE</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <div class="section-head">
+                <h3>🏷️ Рекомендуемые товары</h3>
+                <span class="tap" data-open="shop">Все</span>
+              </div>
+              <article
+                class="card row tap"
+                data-product="Hogwarts Legacy|🎁|1799|Моментальная доставка"
+              >
+                <span style="font-size: 32px">🎁</span>
+                <div style="flex: 1">
+                  <strong>Hogwarts Legacy</strong>
+                  <p class="muted">Моментальная доставка</p>
+                  <span class="green">1799 ₽</span>
+                  <span class="muted" style="text-decoration: line-through"
+                    >2158 ₽</span
+                  >
+                </div>
+                <span class="chip active">-20%</span>
+              </article>
+              <article
+                class="card row tap"
+                data-product="Starfield|🎁|2499|Моментальная доставка"
+              >
+                <span style="font-size: 32px">🎁</span>
+                <div style="flex: 1">
+                  <strong>Starfield</strong>
+                  <p class="muted">Моментальная доставка</p>
+                  <span class="green">2499 ₽</span>
+                  <span class="muted" style="text-decoration: line-through"
+                    >2998 ₽</span
+                  >
+                </div>
+                <span class="chip active">-20%</span>
+              </article>
+            </section>
+
+            <section class="view" data-view="feed">
+              <div class="appbar">
+                <h2>Лента</h2>
+                <button class="small-action tap" data-toast="Пост опубликован">
+                  ＋
+                </button>
+              </div>
+              <div class="search tap" data-open="feedSearch">
+                🔎 <span>Поиск: текст, #тег, @логин, имя...</span>
+              </div>
+              <div class="chips" style="margin: 14px 0">
+                <span class="chip active">Все</span
+                ><span class="chip">#обзор</span
+                ><span class="chip">#скидки</span
+                ><span class="chip">#аукцион</span>
+              </div>
+              <div class="card composer">
+                <div class="field composer-input">
+                  ✍️ Что нового? Пиши #теги...
+                </div>
+                <div class="chip" style="width: max-content">
+                  Черновик сохранён · Продолжить
+                </div>
+                <div class="tool-row">
+                  <button class="small-action tap" data-toast="Фото добавлено">
+                    🖼️
+                  </button>
+                  <button class="small-action tap" data-toast="Файл прикреплён">
+                    📎
+                  </button>
+                  <button class="small-action tap" data-toast="Запись 00:07">
+                    🎙️
+                  </button>
+                  <button
+                    class="small-action tap"
+                    data-toast="Цитата добавлена"
+                  >
+                    ❝
+                  </button>
+                  <button
+                    class="button tap"
+                    style="width: 96px; min-height: 42px"
+                    data-toast="Пост опубликован"
+                  >
+                    Опубликовать
+                  </button>
+                </div>
+              </div>
+              <article class="feed-card tap" data-open="postDetail">
+                <div class="row">
+                  <span class="avatar">🧙</span>
+                  <div>
+                    <strong>WizardKey</strong>
+                    <p class="muted">5 мин. назад · @wizard</p>
+                  </div>
+                  <span style="margin-left: auto">⋯</span>
+                </div>
+                <p style="line-height: 1.45">
+                  Новый обзор Hogwarts Legacy. Добавил голосовое пояснение и
+                  файл со списком ключей. #обзор
+                </p>
+                <div class="card" style="margin: 10px 0 0; padding: 10px">
+                  🎙️ Голос 00:18 <span class="green">▶</span>
+                </div>
+                <div class="row" style="margin-top: 12px">
+                  <span>💬 12</span><span>↻ Цитата</span
+                  ><span class="red">❤ 58</span
+                  ><span style="margin-left: auto">🔖</span>
+                </div>
+              </article>
+            </section>
+
+            <section class="view" data-view="shop">
+              <div class="appbar">
+                <h2>🛒 Магазин</h2>
+                <button class="small-action tap" data-toast="Товары обновлены">
+                  ↻
+                </button>
+              </div>
+              <div class="search tap" data-open="search">
+                🔎 <span>Поиск товаров...</span>
+              </div>
+              <div class="tabs">
+                <span class="tab active">🔥 Популярные</span
+                ><span class="tab">💰 Дешёвые</span>
+              </div>
+              <div class="grid">
+                <article
+                  class="card product-card tap"
+                  data-product="Elden Ring Deluxe|🗡️|2499|Цифровой товар · Steam"
+                >
+                  <div class="product-art">🗡️</div>
+                  <div class="body">
+                    <strong>Elden Ring Deluxe</strong>
+                    <div class="meta" style="margin-top: 10px">
+                      <span class="price">2499 ₽</span
+                      ><span class="buy">Купить</span>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="card product-card tap"
+                  data-product="Starfield Steam Key|🚀|1999|Steam ключ · Глобальный"
+                >
+                  <div class="product-art">🚀</div>
+                  <div class="body">
+                    <strong>Starfield Key</strong>
+                    <div class="meta" style="margin-top: 10px">
+                      <span class="price">1999 ₽</span
+                      ><span class="buy">Купить</span>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="card product-card tap"
+                  data-product="Cyberpunk 2077|🤖|1299|GOG ключ · RU/CIS"
+                >
+                  <div class="product-art">🤖</div>
+                  <div class="body">
+                    <strong>Cyberpunk 2077</strong>
+                    <div class="meta" style="margin-top: 10px">
+                      <span class="price">1299 ₽</span
+                      ><span class="buy">Купить</span>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="card product-card tap"
+                  data-product="Hogwarts Legacy|🧙|1799|Steam ключ · Глобальный"
+                >
+                  <div class="product-art">🧙</div>
+                  <div class="body">
+                    <strong>Hogwarts Legacy</strong>
+                    <div class="meta" style="margin-top: 10px">
+                      <span class="price">1799 ₽</span
+                      ><span class="buy">Купить</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="view" data-view="auction">
+              <div class="appbar">
+                <h2>Аукционы</h2>
+                <button class="small-action tap" data-open="createAuction">
+                  ＋
+                </button>
+              </div>
+              <div class="tabs">
+                <span class="tab active">Активные</span
+                ><span class="tab tap" data-open="finishedAuctions"
+                  >Завершённые</span
+                >
+              </div>
+              <article
+                class="card tap"
+                data-auction="Cyberpunk 2077|🎮|1200|37|00:45:30"
+              >
+                <div class="row">
+                  <span style="font-size: 54px">🎮</span>
+                  <div style="flex: 1">
+                    <strong>Cyberpunk 2077</strong>
+                    <p class="muted">37 ставок · +2 мин при ставке</p>
+                    <div class="meta">
+                      <span class="price">1 200 ⭐</span
+                      ><span class="red">00:45:30</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+              <article
+                class="card tap"
+                data-auction="RDR 2 Ultimate|🎮|1500|18|02:12:44"
+              >
+                <div class="row">
+                  <span style="font-size: 54px">🎮</span>
+                  <div style="flex: 1">
+                    <strong>RDR 2 Ultimate</strong>
+                    <p class="muted">18 ставок · +2 мин при ставке</p>
+                    <div class="meta">
+                      <span class="price">1 500 ⭐</span
+                      ><span class="red">02:12:44</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+              <button class="button tap" data-open="createAuction">
+                Создать аукцион
+              </button>
+            </section>
+
+            <section class="view" data-view="chat">
+              <div class="appbar">
+                <h2>Сообщения</h2>
+                <button class="small-action tap" data-open="newRoom">✎</button>
+              </div>
+              <div class="search">🔎 <span>Поиск...</span></div>
+              <div class="tabs">
+                <span class="tab active">Чаты</span
+                ><span class="tab tap" data-open="channels">Каналы</span
+                ><span class="tab tap" data-open="groups">Группы</span>
+              </div>
+              <div
+                class="menu-row tap"
+                data-chat="Hogwarts seller|🧙|Ключ отправлен, проверьте сообщения"
+              >
+                <span class="avatar">🧙</span>
+                <div>
+                  <strong>Hogwarts seller</strong>
+                  <p class="muted">Ключ отправлен, проверьте сообщения</p>
+                </div>
+                <span class="muted" style="margin-left: auto">2м</span>
+              </div>
+              <div
+                class="menu-row tap"
+                data-chat="GTA Auction|🚗|Ставка перебита: 920 ₽"
+              >
+                <span class="avatar">🚗</span>
+                <div>
+                  <strong>GTA Auction</strong>
+                  <p class="muted">Ставка перебита: 920 ₽</p>
+                </div>
+                <span class="muted" style="margin-left: auto">12м</span>
+              </div>
+            </section>
+
+            <section class="view" data-view="profile">
+              <div class="profile">
+                <div class="profile-avatar">
+                  😎 <span class="points">⭐ 1240</span>
+                </div>
+                <strong style="font-size: 22px">CatPlayer</strong>
+                <p class="muted">@catsh · 2 года · 42 поста</p>
+                <div class="stats">
+                  <div class="stat">
+                    <strong>1240</strong><span>Очков</span>
+                  </div>
+                  <div class="stat">
+                    <strong>8</strong><span>Аукционов</span>
+                  </div>
+                  <div class="stat">
+                    <strong>4.9</strong><span>Рейтинг</span>
+                  </div>
+                </div>
+                <div class="actions" style="gap: 12px; margin-bottom: 20px">
+                  <button class="button tap" data-open="editProfile">
+                    ✏️ Редактировать</button
+                  ><button
+                    class="button secondary tap"
+                    data-toast="Скопировано: @catsh"
+                  >
+                    📤 Поделиться
+                  </button>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="createAuction">
+                <span class="icon-box">➕</span>
+                <div>
+                  <strong>Создать аукцион</strong>
+                  <p class="muted">Выставь игру на продажу</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="myAuctions">
+                <span class="icon-box">🔨</span>
+                <div>
+                  <strong>Мои аукционы</strong>
+                  <p class="muted">8 активных, 14 завершённых</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="notifications">
+                <span class="icon-box">🔔</span>
+                <div>
+                  <strong>Уведомления</strong>
+                  <p class="muted">История оповещений</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="favorites">
+                <span class="icon-box">🔖</span>
+                <div>
+                  <strong>Избранное</strong>
+                  <p class="muted">Посты, товары и пользователи</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="auth">
+                <span
+                  class="icon-box"
+                  style="background: rgba(239, 68, 68, 0.16)"
+                  >🚪</span
+                >
+                <div>
+                  <strong>Выйти</strong>
+                  <p class="muted">Выход из аккаунта</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="search">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Глобальный поиск</h2>
+                <span></span>
+              </div>
+              <div class="field focus">🔎 cyber</div>
+              <div class="menu-row tap" data-open="userProfile">
+                <span class="icon-box">👤</span>
+                <div>
+                  <strong>@cybercat</strong>
+                  <p class="muted">user</p>
+                </div>
+              </div>
+              <div
+                class="menu-row tap"
+                data-product="Cyberpunk 2077|🤖|1299|GOG ключ · RU/CIS"
+              >
+                <span class="icon-box">🛒</span>
+                <div>
+                  <strong>Cyberpunk 2077</strong>
+                  <p class="muted">1299 ₽</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="postDetail">
+                <span class="icon-box">📰</span>
+                <div>
+                  <strong>Пост про Cyberpunk</strong>
+                  <p class="muted">post</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="channels">
+                <span class="icon-box">💬</span>
+                <div>
+                  <strong>Cyber Channel</strong>
+                  <p class="muted">channel</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="productDetail">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Товар</h2>
+                <span></span>
+              </div>
+              <div class="detail-card" style="text-align: center">
+                <div id="productEmoji" style="font-size: 76px">🎮</div>
+                <h2 id="productTitle">Game</h2>
+                <p id="productDesc" class="muted">Цифровой товар</p>
+                <div
+                  id="productPrice"
+                  class="price"
+                  style="margin: 18px 0; font-size: 30px"
+                >
+                  0 ₽
+                </div>
+                <button class="button tap" data-toast="Открыта страница оплаты">
+                  Купить сейчас
+                </button>
+              </div>
+              <div class="detail-card">
+                <div class="meta">
+                  <span>ID товара</span><strong>GV-2048</strong>
+                </div>
+                <br />
+                <div class="meta">
+                  <span>Продавец</span><strong>Digiseller</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="auctionDetail">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Аукцион</h2>
+                <span></span>
+              </div>
+              <div class="detail-card" style="text-align: center">
+                <div id="auctionEmoji" style="font-size: 76px">🎮</div>
+                <h2 id="auctionTitle">Cyberpunk 2077</h2>
+                <p class="muted">Следующая ставка прибавит 2 минуты.</p>
+                <div
+                  id="auctionPrice"
+                  class="price"
+                  style="margin: 16px 0; font-size: 28px"
+                >
+                  1 200 ⭐
+                </div>
+                <p id="auctionBids" class="muted">37 ставок</p>
+                <button
+                  class="button tap"
+                  data-toast="✅ Ставка принята, +2 мин к аукциону"
+                >
+                  Поставить
+                </button>
+              </div>
+            </section>
+
+            <section class="view" data-view="postDetail">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Пост</h2>
+                <button class="small-action tap" data-toast="Жалоба отправлена">
+                  ⚑
+                </button>
+              </div>
+              <article class="feed-card">
+                <div class="row">
+                  <span class="avatar">🧙</span>
+                  <div>
+                    <strong>WizardKey</strong>
+                    <p class="muted">5 мин. назад · @wizard</p>
+                  </div>
+                </div>
+                <p style="line-height: 1.45">
+                  Пост с цитатой, голосовым сообщением, вложением и хэштегами
+                  #обзор #ключи.
+                </p>
+                <div class="card">📎 keys-list.pdf</div>
+                <div class="card">🎙️ Голос 00:18 ▶</div>
+                <div class="actions" style="gap: 12px">
+                  <button
+                    class="button secondary tap"
+                    data-toast="Комментарий открыт"
+                  >
+                    💬 Комментарий</button
+                  ><button
+                    class="button tap"
+                    data-toast="Пост добавлен в избранное"
+                  >
+                    🔖
+                  </button>
+                </div>
+              </article>
+            </section>
+
+            <section class="view" data-view="chatDetail">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2 id="chatTitle">Чат</h2>
+                <span></span>
+              </div>
+              <div class="detail-card">
+                <strong id="chatName">Собеседник</strong>
+                <p id="chatLast" class="muted">Сообщение</p>
+              </div>
+              <div
+                class="detail-card"
+                style="margin-left: 46px; background: rgba(124, 58, 237, 0.28)"
+              >
+                Здравствуйте! Товар доступен?
+              </div>
+              <div class="detail-card" style="margin-right: 46px">
+                Да, ключ готов к отправке после оплаты.
+              </div>
+              <div
+                class="field"
+                style="position: sticky; bottom: 0; margin-top: 18px"
+              >
+                Сообщение...
+                <span style="margin-left: auto; color: var(--violet)">➤</span>
+              </div>
+            </section>
+
+            <section class="view" data-view="channels">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Каналы</h2>
+                <button class="small-action tap" data-open="newRoom">＋</button>
+              </div>
+              <div class="tabs">
+                <span class="tab">Чаты</span
+                ><span class="tab active">Каналы</span
+                ><span class="tab tap" data-open="groups">Группы</span>
+              </div>
+              <div
+                class="menu-row tap"
+                data-chat="GameVault News|📣|Новые скидки в магазине"
+              >
+                <span class="avatar">📣</span>
+                <div>
+                  <strong>GameVault News</strong>
+                  <p class="muted">Новые скидки в магазине</p>
+                </div>
+                <span class="chip active" style="margin-left: auto"
+                  >Вступить</span
+                >
+              </div>
+            </section>
+
+            <section class="view" data-view="groups">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Группы</h2>
+                <button class="small-action tap" data-open="newRoom">＋</button>
+              </div>
+              <div class="tabs">
+                <span class="tab">Чаты</span
+                ><span class="tab tap" data-open="channels">Каналы</span
+                ><span class="tab active">Группы</span>
+              </div>
+              <div
+                class="menu-row tap"
+                data-chat="Steam Hunters|👥|Обсуждаем ключи и аукционы"
+              >
+                <span class="avatar">👥</span>
+                <div>
+                  <strong>Steam Hunters</strong>
+                  <p class="muted">Обсуждаем ключи и аукционы</p>
+                </div>
+                <span class="chip active" style="margin-left: auto"
+                  >Вступить</span
+                >
+              </div>
+            </section>
+
+            <section class="view" data-view="finishedAuctions">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Завершённые</h2>
+                <span></span>
+              </div>
+              <div class="menu-row tap" data-open="rateUser">
+                <span class="icon-box">🎮</span>
+                <div>
+                  <strong>Hogwarts Legacy</strong>
+                  <p class="muted">winner @catsh · контрагент seller</p>
+                </div>
+                <span class="chip active" style="margin-left: auto"
+                  >Оценить</span
+                >
+              </div>
+              <div class="menu-row">
+                <span class="icon-box">🎮</span>
+                <div>
+                  <strong>GTA V Premium</strong>
+                  <p class="muted">Оценка отправлена</p>
+                </div>
+                <span class="green" style="margin-left: auto">✓</span>
+              </div>
+            </section>
+
+            <section class="view" data-view="newRoom">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Новая комната</h2>
+                <span></span>
+              </div>
+              <div class="tabs">
+                <span class="tab active">Личка</span
+                ><span class="tab">Канал</span><span class="tab">Группа</span>
+              </div>
+              <div class="field focus">Логин пользователя</div>
+              <button class="button tap" data-toast="Личный чат создан">
+                Создать
+              </button>
+            </section>
+
+            <section class="view" data-view="createAuction">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Создать аукцион</h2>
+                <span></span>
+              </div>
+              <div class="field focus">🎮 Название игры</div>
+              <div class="field">🔗 Ссылка / URL товара</div>
+              <div class="field">⭐ Стартовая цена</div>
+              <div class="field">⏱ Длительность</div>
+              <button class="button tap" data-toast="Аукцион создан">
+                Опубликовать
+              </button>
+            </section>
+
+            <section class="view" data-view="editProfile">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Редактировать</h2>
+                <span></span>
+              </div>
+              <div class="field focus">👤 CatPlayer</div>
+              <div class="field">🔗 @catsh</div>
+              <div class="field">✉️ catsh@example.com</div>
+              <button class="button tap" data-toast="Профиль сохранён">
+                Сохранить
+              </button>
+            </section>
+
+            <section class="view" data-view="notifications">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Уведомления</h2>
+                <span class="link tap" data-toast="Все прочитано"
+                  >Все проч.</span
+                >
+              </div>
+              <div class="menu-row">
+                <span class="icon-box">•</span>
+                <div>
+                  <strong>Ставка перебита</strong>
+                  <p class="muted">GTA V Premium · 5 мин.</p>
+                </div>
+              </div>
+              <div class="menu-row">
+                <span class="icon-box">✓</span>
+                <div>
+                  <strong>Покупка завершена</strong>
+                  <p class="muted">Hogwarts Legacy · сегодня</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="favorites">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Избранное</h2>
+                <span></span>
+              </div>
+              <div class="tabs">
+                <span class="tab active">Посты</span
+                ><span class="tab">Товары</span><span class="tab">Юзеры</span>
+              </div>
+              <div class="menu-row tap" data-open="postDetail">
+                <span class="icon-box">🔖</span>
+                <div>
+                  <strong>Пост WizardKey</strong>
+                  <p class="muted">Голос, файл, #обзор</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="myAuctions">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Мои аукционы</h2>
+                <span></span>
+              </div>
+              <div
+                class="menu-row tap"
+                data-auction="GTA V Premium|🎮|890|24|02:34:12"
+              >
+                <span class="icon-box">🎮</span>
+                <div>
+                  <strong>GTA V Premium</strong>
+                  <p class="muted">24 ставки · активен</p>
+                </div>
+              </div>
+              <div class="menu-row tap" data-open="finishedAuctions">
+                <span class="icon-box">✓</span>
+                <div>
+                  <strong>Завершённые сделки</strong>
+                  <p class="muted">14 сделок · оценки</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="view" data-view="rateUser">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Оценка</h2>
+                <span></span>
+              </div>
+              <div class="detail-card" style="text-align: center">
+                <div style="font-size: 54px">⭐</div>
+                <h2>Оценить контрагента</h2>
+                <p class="muted">Hogwarts Legacy · seller</p>
+                <div style="font-size: 28px; margin: 18px 0">★★★★★</div>
+                <button class="button tap" data-toast="Оценка отправлена">
+                  Отправить
+                </button>
+              </div>
+            </section>
+
+            <section class="view" data-view="userProfile">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Пользователь</h2>
+                <span></span>
+              </div>
+              <div class="profile">
+                <div class="profile-avatar">🐱</div>
+                <strong style="font-size: 22px">CyberCat</strong>
+                <p class="muted">@cybercat · 18 постов · рейтинг 4.8</p>
+                <button class="button tap" data-chat="CyberCat|🐱|Привет!">
+                  Написать
+                </button>
+              </div>
+            </section>
+
+            <section class="view" data-view="feedSearch">
+              <div class="appbar">
+                <button class="back tap" data-back>‹</button>
+                <h2>Поиск в ленте</h2>
+                <span></span>
+              </div>
+              <div class="field focus">🔎 #обзор</div>
+              <div class="chips">
+                <span class="chip active">#обзор</span
+                ><span class="chip">#ключи</span
+                ><span class="chip">#скидки</span>
+              </div>
+              <div class="menu-row tap" data-open="postDetail">
+                <span class="icon-box">📰</span>
+                <div>
+                  <strong>Обзор Hogwarts</strong>
+                  <p class="muted">WizardKey · голос и файл</p>
+                </div>
+              </div>
+            </section>
+
+            <nav class="nav" id="nav" aria-label="Bottom navigation">
+              <button class="tap" data-open="home" data-tab="home">🏠</button>
+              <button class="tap" data-open="feed" data-tab="feed">📰</button>
+              <button class="tap" data-open="shop" data-tab="shop">🛒</button>
+              <button class="tap" data-open="auction" data-tab="auction">
+                ⚖️
+              </button>
+              <button class="tap" data-open="chat" data-tab="chat">💬</button>
+              <button class="tap" data-open="profile" data-tab="profile">
+                👤
+              </button>
+            </nav>
+
+            <div class="toast" id="toast">Готово</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="palette">
+        <h2>Палитра</h2>
+        <p>
+          Основные цвета взяты из текущих Flutter-экранов: тёмный scaffold,
+          violet primary, pink gradient, orange points и green success.
+        </p>
+        <div class="colors">
+          <div class="color" style="background: #0f0f1a">
+            #0F0F1A<br />Background
+          </div>
+          <div class="color" style="background: #1a1a2e">
+            #1A1A2E<br />Surface
+          </div>
+          <div class="color" style="background: #7c3aed">
+            #7C3AED<br />Primary
+          </div>
+          <div class="color" style="background: #ec4899">
+            #EC4899<br />Gradient
+          </div>
+          <div class="color" style="background: #3b82f6">#3B82F6<br />Blue</div>
+          <div class="color" style="background: #34d399; color: #07140f">
+            #34D399<br />Success
+          </div>
+          <div class="color" style="background: #f59e0b; color: #180f04">
+            #F59E0B<br />Points
+          </div>
+          <div class="color" style="background: #8888aa; color: #0f0f1a">
+            #8888AA<br />Muted
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const views = [...document.querySelectorAll("[data-view]")];
+      const nav = document.querySelector("#nav");
+      const navItems = [...document.querySelectorAll(".nav button")];
+      const toast = document.querySelector("#toast");
+      const tabs = ["home", "feed", "shop", "auction", "chat", "profile"];
+      const historyStack = ["auth"];
+
+      function currentView() {
+        return document.querySelector(".view.active")?.dataset.view || "auth";
+      }
+
+      function showView(name, push = true) {
+        const before = currentView();
+        views.forEach((view) =>
+          view.classList.toggle("active", view.dataset.view === name),
+        );
+        nav.classList.toggle("show", tabs.includes(name));
+        navItems.forEach((item) =>
+          item.classList.toggle("active", item.dataset.tab === name),
+        );
+        if (push && before !== name) historyStack.push(name);
+        document
+          .querySelector(`[data-view="${name}"]`)
+          ?.scrollTo({ top: 0, behavior: "instant" });
+      }
+
+      function back() {
+        if (historyStack.length > 1) {
+          historyStack.pop();
+          showView(historyStack[historyStack.length - 1], false);
+        } else {
+          showView("home");
+        }
+      }
+
+      function flash(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(flash.timer);
+        flash.timer = setTimeout(() => toast.classList.remove("show"), 1700);
+      }
+
+      function openProduct(data) {
+        const [title, emoji, price, desc] = data.split("|");
+        document.querySelector("#productTitle").textContent = title;
+        document.querySelector("#productEmoji").textContent = emoji;
+        document.querySelector("#productPrice").textContent = `${price} ₽`;
+        document.querySelector("#productDesc").textContent = desc;
+        showView("productDetail");
+      }
+
+      function openAuction(data) {
+        const [title, emoji, price, bids] = data.split("|");
+        document.querySelector("#auctionTitle").textContent = title;
+        document.querySelector("#auctionEmoji").textContent = emoji;
+        document.querySelector("#auctionPrice").textContent = `${price} ⭐`;
+        document.querySelector("#auctionBids").textContent = `${bids} ставок`;
+        showView("auctionDetail");
+      }
+
+      function openChat(data) {
+        const [name, emoji, message] = data.split("|");
+        document.querySelector("#chatTitle").textContent = `${emoji} ${name}`;
+        document.querySelector("#chatName").textContent = name;
+        document.querySelector("#chatLast").textContent = message;
+        showView("chatDetail");
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest(
+          "[data-open], [data-back], [data-toast], [data-product], [data-auction], [data-chat]",
+        );
+        if (!target) return;
+        if (target.dataset.back !== undefined) return back();
+        if (target.dataset.toast) return flash(target.dataset.toast);
+        if (target.dataset.product) return openProduct(target.dataset.product);
+        if (target.dataset.auction) return openAuction(target.dataset.auction);
+        if (target.dataset.chat) return openChat(target.dataset.chat);
+        if (target.dataset.open) return showView(target.dataset.open);
+      });
+    </script>
+  </body>
+</html>
