@@ -12,6 +12,7 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
+  static const List<String> _userTables = ['User', 'users', 'user', '"User"'];
   late TextEditingController _usernameController;
   late TextEditingController _loginController;
   late TextEditingController _emailController;
@@ -113,12 +114,25 @@ class _EditProfilePageState extends State<EditProfilePage> {
         if (newAvatarUrl != null) 'avatar': newAvatarUrl,
       };
 
-      final response = await Supabase.instance.client
-          .from('User')
-          .update(updateData)
-          .eq('id', userId)
-          .select()
-          .single();
+      Map<String, dynamic>? response;
+      Object? lastError;
+      for (final t in _userTables) {
+        try {
+          final row = await Supabase.instance.client
+              .from(t)
+              .update(updateData)
+              .eq('id', userId)
+              .select()
+              .single();
+          response = Map<String, dynamic>.from(row);
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      if (response == null) {
+        throw Exception(lastError ?? 'Не удалось обновить профиль');
+      }
 
       // 3️⃣ Опционально: обновляем метаданные в auth.users
       await Supabase.instance.client.auth.updateUser(

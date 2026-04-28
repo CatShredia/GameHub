@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabase = Supabase.instance.client;
+const List<String> _userTableCandidates = ['User', 'users', 'user', '"User"'];
 
 // ? Сервис для работы с чатами через Supabase Realtime (WebSocket)
 class ChatService {
@@ -158,25 +159,54 @@ class ChatService {
   final StreamController<List<Map<String, dynamic>>> _chatsController =
       StreamController<List<Map<String, dynamic>>>.broadcast();
   RealtimeChannel? _chatsChannel;
+  /// Одна инициализация на все подписчики (несколько StreamBuilder в вкладках).
+  Future<void>? _chatsPipelineFuture;
+  /// Последняя отданная в стрим витрина: новые подписчики на broadcast ничего не видят — отдаём кэш.
+  List<Map<String, dynamic>>? _lastChatsSnapshot;
+  /// Один [Stream] на всё приложение: иначе каждый rebuild/новая вкладка = новый стрим и вечный waiting.
+  Stream<List<Map<String, dynamic>>>? _chatsStreamCache;
 
-  // ? Возвращает стрим списка чатов пользователя с Realtime-обновлениями
+  // ? Список чатов: сначала [last] снимок, потом live broadcast (повторный вход на вкладку не ломается)
   Stream<List<Map<String, dynamic>>> get chatsStream {
-    _initChatsStream();
-    return _chatsController.stream;
+    _chatsPipelineFuture ??= _ensureChatsPipeline();
+    return _chatsStreamCache ??= _createChatsStreamWithReplay();
   }
 
-  // ? Инициализирует Realtime-подписку на чаты пользователя
-  Future<void> _initChatsStream() async {
+  Stream<List<Map<String, dynamic>>> _createChatsStreamWithReplay() {
+    return Stream<List<Map<String, dynamic>>>.multi((controller) {
+      controller.add(
+        List<Map<String, dynamic>>.from(
+          _lastChatsSnapshot ?? <Map<String, dynamic>>[],
+        ),
+      );
+      final sub = _chatsController.stream.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+        cancelOnError: false,
+      );
+      controller.onCancel = sub.cancel;
+    });
+  }
+
+  void _emitChats(List<Map<String, dynamic>> list) {
+    if (_chatsController.isClosed) return;
+    _lastChatsSnapshot = List<Map<String, dynamic>>.from(list);
+    _chatsController.add(_lastChatsSnapshot!);
+  }
+
+  /// Загрузка + Realtime. Без [hasListener]: иначе первая [add] чаще всего до подписки и спиннер вечен.
+  Future<void> _ensureChatsPipeline() async {
     if (_chatsChannel != null) return;
 
-    debugPrint('ChatService: инициализация стрима чатов');
-
     try {
+      // Даём StreamBuilder'ам подписаться на broadcast, иначе первый add теряется.
+      await Future<void>.delayed(Duration.zero);
       await _loadUserChats();
     } catch (e) {
-      debugPrint('ChatService: ошибка инициализации: $e');
-      if (!_chatsController.isClosed && _chatsController.hasListener) {
-        _chatsController.add([]);
+      debugPrint('ChatService: ошибка первой загрузки чатов: $e');
+      if (!_chatsController.isClosed) {
+        _emitChats(<Map<String, dynamic>>[]);
       }
     }
 
@@ -186,7 +216,8 @@ class ChatService {
       return;
     }
 
-    // ? Уникальное имя канала для каждого пользователя
+    if (_chatsChannel != null) return;
+
     final channelName = 'chats:$userId';
     debugPrint('ChatService: создаю канал $channelName');
 
@@ -198,9 +229,8 @@ class ChatService {
           table: 'Message',
           callback: (payload) {
             debugPrint(
-              'ChatService[Realtime Message]: '
-              'событие=INSERT, chat_id=${payload.newRecord['chat_id']}, '
-              'content=${payload.newRecord['content']}',
+              'ChatService[Realtime Message]: chat_id='
+              '${payload.newRecord['chat_id']}',
             );
             _loadUserChats();
           },
@@ -211,8 +241,8 @@ class ChatService {
           table: 'Chat',
           callback: (payload) {
             debugPrint(
-              'ChatService[Realtime Chat]: '
-              'событие=INSERT, chat_id=${payload.newRecord['id']}',
+              'ChatService[Realtime Chat]: id='
+              '${payload.newRecord['id']}',
             );
             _loadUserChats();
           },
@@ -245,8 +275,8 @@ class ChatService {
     debugPrint('ChatService: загрузка чатов, user=${user?.id ?? 'null'}');
 
     if (user == null) {
-      if (!_chatsController.isClosed && _chatsController.hasListener) {
-        _chatsController.add([]);
+      if (!_chatsController.isClosed) {
+        _emitChats(<Map<String, dynamic>>[]);
       }
       return;
     }
@@ -283,16 +313,16 @@ class ChatService {
         chatsWithLastMsg.add({...row, 'last_message': lastMessage});
       }
 
-      if (!_chatsController.isClosed && _chatsController.hasListener) {
+      if (!_chatsController.isClosed) {
         debugPrint(
           'ChatService: отправляю ${chatsWithLastMsg.length} чатов в стрим',
         );
-        _chatsController.add(chatsWithLastMsg);
+        _emitChats(chatsWithLastMsg);
       }
     } catch (e, st) {
       debugPrint('ChatService: ошибка загрузки чатов: $e\n$st');
-      if (!_chatsController.isClosed && _chatsController.hasListener) {
-        _chatsController.addError(e);
+      if (!_chatsController.isClosed) {
+        _emitChats(<Map<String, dynamic>>[]);
       }
     }
   }
@@ -318,16 +348,94 @@ class ChatService {
     });
   }
 
+  /// Каналы и группы, в которые пользователь ещё не вступил ([type_chat]: channel | group).
+  Future<List<Map<String, dynamic>>> listDiscoverChats(String typeChat) async {
+    final me = supabase.auth.currentUser;
+    if (me == null) return [];
+
+    final all = await supabase
+        .from('Chat')
+        .select('id, namechat, descriptions, type_chat, created_at')
+        .eq('type_chat', typeChat)
+        .order('created_at', ascending: false);
+
+    final mine = await supabase
+        .from('ChatMember')
+        .select('chat_id')
+        .eq('user_id', me.id);
+    final myIds = <int>{
+      for (final r in List<Map<String, dynamic>>.from(mine))
+        (r['chat_id'] as num).toInt(),
+    };
+
+    return List<Map<String, dynamic>>.from(all)
+        .where((c) => !myIds.contains(c['id']))
+        .toList();
+  }
+
+  /// Вступить в чат/канал/группу (роль — участник).
+  Future<String?> joinChat(int chatId) async {
+    final me = supabase.auth.currentUser;
+    if (me == null) return 'Войдите в аккаунт';
+    try {
+      await supabase.from('ChatMember').insert({
+        'user_id': me.id,
+        'chat_id': chatId,
+        'role': 'member',
+      });
+      await _loadUserChats();
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Создать канал или группу; создатель сразу участник.
+  Future<Map<String, dynamic>?> createRoom({
+    required String name,
+    required String description,
+    required String typeChat, // 'channel' | 'group'
+  }) async {
+    final me = supabase.auth.currentUser;
+    if (me == null) return null;
+    final chat = await supabase
+        .from('Chat')
+        .insert({
+          'namechat': name.trim(),
+          'descriptions': description.trim().isEmpty ? null : description.trim(),
+          'type_chat': typeChat,
+        })
+        .select()
+        .single();
+    final id = (chat['id'] as num).toInt();
+    await supabase.from('ChatMember').insert({
+      'user_id': me.id,
+      'chat_id': id,
+      'role': 'admin',
+    });
+    await _loadUserChats();
+    return chat;
+  }
+
   // ? Создаёт приватный чат с другим пользователем
   Future<Map<String, dynamic>?> createPrivateChat(String targetLogin) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return null;
 
-    final target = await supabase
-        .from('User')
-        .select('id, username')
-        .eq('login', targetLogin)
-        .maybeSingle();
+    Map<String, dynamic>? target;
+    for (final table in _userTableCandidates) {
+      try {
+        final row = await supabase
+            .from(table)
+            .select('id, username')
+            .eq('login', targetLogin)
+            .maybeSingle();
+        if (row != null) {
+          target = Map<String, dynamic>.from(row);
+          break;
+        }
+      } catch (_) {}
+    }
 
     if (target == null) return null;
 
@@ -357,6 +465,9 @@ class ChatService {
 
     _chatsChannel?.unsubscribe();
     _chatsChannel = null;
+    _chatsPipelineFuture = null;
+    _chatsStreamCache = null;
+    _lastChatsSnapshot = null;
     if (!_chatsController.isClosed) _chatsController.close();
   }
 }

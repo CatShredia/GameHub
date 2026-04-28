@@ -11,11 +11,9 @@ class CreateAuctionPage extends StatefulWidget {
 class _CreateAuctionPageState extends State<CreateAuctionPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
   final _minPriceController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _steamKeyController = TextEditingController();
-  final _steamUrlController = TextEditingController();
   
   int _hours = 24; // По умолчанию 24 часа
   bool _isLoading = false;
@@ -23,11 +21,9 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
     _minPriceController.dispose();
     _imageUrlController.dispose();
     _steamKeyController.dispose();
-    _steamUrlController.dispose();
     super.dispose();
   }
 
@@ -41,14 +37,21 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       if (user == null) throw Exception('Пользователь не авторизован');
 
       final endDate = DateTime.now().add(Duration(hours: _hours));
+      final imageUrl = _imageUrlController.text.trim();
+      if (imageUrl.isEmpty) {
+        throw Exception('Укажите URL обложки (url_item) — обязательное поле');
+      }
+      final steam = _steamKeyController.text.trim();
+      if (steam.isEmpty) {
+        throw Exception('Укажите Steam-ключ (steam_key) — обязательное поле');
+      }
 
+      // Только поля из схемы: Auction_items
       await Supabase.instance.client.from('Auction_items').insert({
         'title': _titleController.text.trim(),
-        'description': _descriptionController.text.trim(),
         'start_price': int.parse(_minPriceController.text),
-        'url_item': _imageUrlController.text.trim().isEmpty ? null : _imageUrlController.text.trim(),
-        'steam_key': _steamKeyController.text.trim().isEmpty ? null : _steamKeyController.text.trim(),
-        'steam_url': _steamUrlController.text.trim().isEmpty ? null : _steamUrlController.text.trim(),
+        'url_item': imageUrl,
+        'steam_key': steam,
         'ended_at': endDate.toIso8601String(),
         'is_active': true,
         'owner_id': user.id,
@@ -134,31 +137,12 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
               ),
               const SizedBox(height: 12),
 
-              // Описание
-              TextFormField(
-                controller: _descriptionController,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Описание',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  prefixIcon: const Icon(Icons.description, color: Color(0xFF7C3AED)),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A2E),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
               // URL изображения
               TextFormField(
                 controller: _imageUrlController,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'URL изображения',
+                  labelText: 'URL обложки (url_item) *',
                   labelStyle: const TextStyle(color: Colors.grey),
                   prefixIcon: const Icon(Icons.image, color: Color(0xFF7C3AED)),
                   filled: true,
@@ -168,6 +152,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                     borderSide: BorderSide.none,
                   ),
                 ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Введите ссылку на картинку' : null,
               ),
               
               const SizedBox(height: 24),
@@ -274,7 +260,7 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                 controller: _steamKeyController,
                 style: const TextStyle(color: Colors.white, fontSize: 12),
                 decoration: InputDecoration(
-                  labelText: 'Steam ключ (активации)',
+                  labelText: 'Steam ключ (steam_key) *',
                   labelStyle: const TextStyle(color: Colors.grey),
                   prefixIcon: const Icon(Icons.vpn_key, color: Color(0xFF10B981)),
                   filled: true,
@@ -283,29 +269,12 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  helperText: 'Один или несколько ключей (каждый с новой строки)',
+                  helperText: 'Скрыт до окончания; один или несколько, с новой строки',
                   helperStyle: const TextStyle(color: Colors.grey, fontSize: 11),
                 ),
                 maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-
-              // Steam URL
-              TextFormField(
-                controller: _steamUrlController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'URL страницы в Steam',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  prefixIcon: const Icon(Icons.link, color: Color(0xFF3B82F6)),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A2E),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  hintText: 'https://store.steampowered.com/app/...',
-                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Нужен Steam-ключ' : null,
               ),
               
               const SizedBox(height: 32),

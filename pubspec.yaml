@@ -9,20 +9,33 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
+  supabase_flutter: ^2.0.0
+  nav_bar: ^0.1.1
+  shared_preferences: ^2.3.0
+  timeago: ^3.6.0
+  image_picker: ^1.0.7
+  crypto: ^3.0.3
+  url_launcher: ^6.2.5
+  http: ^1.1.0
+  # Voice messages + attachments + in-app notifications
+  record: ^5.1.2
+  just_audio: ^0.9.40
+  file_picker: ^8.1.2
+  permission_handler: ^11.3.1
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  uuid: ^4.4.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  supabase_flutter: ^2.0.0
-  nav_bar: ^0.1.1
-  shared_preferences: ^2.3.0
-  timeago: ^3.6.0
-  image_picker: ^1.0.7 
-  crypto: ^3.0.3
-  url_launcher: ^6.2.5
-  http: ^1.1.0
+
+# record 5.2.1 тянет устаревший record_linux 0.7.2, несовместимый с
+# record_platform_interface 1.5.0 (нет startStream, неправильная сигнатура
+# hasPermission). Жёстко подтягиваем свежий record_linux 1.3.0.
+dependency_overrides:
+  record_linux: ^1.3.0
 
 flutter:
   uses-material-design: true

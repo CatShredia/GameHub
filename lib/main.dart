@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_page.dart';
@@ -6,6 +8,21 @@ import 'check.dart';
 import 'forgot_password.dart';
 import 'home.dart';
 import 'reg_page.dart';
+
+// ? Системная панель «Назад/Домой/Обзор»: [MainActivity.kt] + SystemChrome после кадра (Flutter иначе сбрасывает insets).
+void _applyHideAndroidNav() {
+  if (defaultTargetPlatform != TargetPlatform.android) return;
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: [SystemUiOverlay.top],
+  );
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Color(0x00000000),
+      systemNavigationBarDividerColor: Color(0x00000000),
+    ),
+  );
+}
 
 // ? Инициализация приложения и Supabase-клиента
 void main() async {
@@ -20,8 +37,33 @@ void main() async {
 }
 
 // ? Корневой виджет приложения с настройкой темы и маршрутов
-class MainApp extends StatelessWidget {
+class MainApp extends StatefulWidget {
   const MainApp({super.key});
+
+  @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyHideAndroidNav());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _applyHideAndroidNav();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,3 +85,4 @@ class MainApp extends StatelessWidget {
     );
   }
 }
+

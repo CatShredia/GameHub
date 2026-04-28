@@ -63,7 +63,7 @@ class DigisellerApiService {
   // 🔥 ВЫБЕРИТЕ НУЖНЫЙ АДРЕС ДЛЯ ВАШЕГО УСТРОЙСТВА:
   
   /// 🤖 Android эмулятор (AVD) — стандартный адрес
-  static const String _baseUrl = 'http://10.0.2.2:8080/api';
+  static const String _baseUrl = 'https://corie-hyperleucocytotic-unbounteously.ngrok-free.dev/api';
   
   /// 🍎 iOS симулятор (раскомментируйте при необходимости):
   // static const String _baseUrl = 'http://localhost:8080/api';
