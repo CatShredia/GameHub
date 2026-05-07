@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
+    show defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_page.dart';
@@ -38,8 +39,30 @@ void main() async {
     anonKey: 'sb_publishable_Kp7LtHGXD6zG4wLU_9B01Q_499L7I0V',
   );
   await PushNotificationService.instance.initialize();
+  await _initStripe();
 
   runApp(const MainApp());
+}
+
+// Stripe publishable key передаётся через --dart-define=STRIPE_PUBLISHABLE_KEY=pk_test_...
+// Если ключ не задан — Stripe просто не инициализируется, оплата будет отключена.
+const String _stripePublishableKey = String.fromEnvironment(
+  'STRIPE_PUBLISHABLE_KEY',
+);
+
+Future<void> _initStripe() async {
+  if (_stripePublishableKey.isEmpty) {
+    debugPrint('Stripe disabled: STRIPE_PUBLISHABLE_KEY is not set');
+    return;
+  }
+  try {
+    Stripe.publishableKey = _stripePublishableKey;
+    Stripe.merchantIdentifier = 'merchant.com.example.gamehub';
+    await Stripe.instance.applySettings();
+    debugPrint('💳 Stripe initialized');
+  } catch (e) {
+    debugPrint('Stripe init failed: $e');
+  }
 }
 
 // ? Корневой виджет приложения с настройкой темы и маршрутов

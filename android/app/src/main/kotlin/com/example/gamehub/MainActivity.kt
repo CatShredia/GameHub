@@ -9,12 +9,15 @@ import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 /// Скрывает системную панель «Назад / Домой / Обзор». Панель приложения не трогаем.
 /// Flutter после первого кадра часто сбрасывает insets — дублируем вызовы.
-class MainActivity : FlutterActivity() {
+///
+/// Наследуемся от FlutterFragmentActivity (а не FlutterActivity), так как
+/// flutter_stripe требует Fragment-совместимую активность для PaymentSheet.
+class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)

@@ -2,3 +2,9 @@ project_id = "tvjggbkxmgbdtcfxggza"
 
 [functions.send-message-push]
 verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.stripe-create-payment-intent]
+verify_jwt = false

@@ -257,11 +257,14 @@ class _BottomProfileState extends State<BottomProfile> {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final result = await Navigator.push<bool>(
                     context,
                     MaterialPageRoute(builder: (_) => const TopUpPage()),
                   );
+                  if (result == true && mounted) {
+                    _loadProfile();
+                  }
                 },
                 icon: const Icon(Icons.add_card, color: Colors.white),
                 label: const Text(

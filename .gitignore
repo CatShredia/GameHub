@@ -39,6 +39,8 @@ migrate_working_dir/
 **/.env
 **/.env.*
 .fcm-secret.env
+.stripe-secret.env
+.stripe-webhook.env
 **/firebase-adminsdk*.json
 gamehub-*-firebase-adminsdk-*.json
 
