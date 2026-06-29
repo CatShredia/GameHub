@@ -33,22 +33,12 @@ class ProfileService {
     final posts = await _client.from('Post').select('id').eq('user_id', userId);
     final postsCount = posts.length;
 
-    final auctions = await _client
-        .from('Auction_items')
-        .select('id, is_active')
-        .eq('owner_id', userId);
-
-    final activeAuctions = auctions.where((a) => a['is_active'] == true).length;
-    final completedAuctions = auctions.length - activeAuctions;
-
     final scope = (user['scope'] as num?)?.toInt() ?? 0;
     final stats = await RatingService.instance.getStats(userId);
     return {
       'user': user,
       'points': scope,
       'postsCount': postsCount,
-      'activeAuctions': activeAuctions,
-      'completedAuctions': completedAuctions,
       'rating': stats.avgStars,
       'ratingCount': stats.count,
       'joinedAt': user['created_at'],

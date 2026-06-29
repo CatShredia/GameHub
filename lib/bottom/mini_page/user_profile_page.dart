@@ -6,7 +6,6 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../database/services/chat_service.dart';
 import '../../database/services/rating_service.dart';
 import 'chat_screen.dart';
-import 'rate_user_sheet.dart';
 
 /// Профиль пользователя по [userId] и кнопка «Начать чат».
 class UserProfilePage extends StatefulWidget {
@@ -146,85 +145,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
-  Future<void> _rateUser() async {
-    final me = Supabase.instance.client.auth.currentUser?.id;
-    if (me == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Войдите в аккаунт')));
-      return;
-    }
-    if (me == widget.userId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нельзя оценить самого себя')),
-      );
-      return;
-    }
-    try {
-      final rows = await Supabase.instance.client
-          .from('Auction_items')
-          .select('id, owner_id, winner_id, is_active, ended_at')
-          .eq('is_active', false)
-          .or(
-            'and(owner_id.eq.$me,winner_id.eq.${widget.userId}),and(owner_id.eq.${widget.userId},winner_id.eq.$me)',
-          )
-          .order('ended_at', ascending: false)
-          .limit(30);
-      final auctions = List<Map<String, dynamic>>.from(rows);
-      if (auctions.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет завершенных сделок для оценки')),
-        );
-        return;
-      }
-
-      bool opened = false;
-      for (final a in auctions) {
-        final id = (a['id'] as num).toInt();
-        final ownerId = a['owner_id']?.toString();
-        final winnerId = a['winner_id']?.toString();
-        if (ownerId == null || winnerId == null) continue;
-        final role = ownerId == me ? RatingRole.buyer : RatingRole.seller;
-        final check = await RatingService.instance.canRate(
-          auctionId: id,
-          role: role,
-        );
-        if (!check.allowed) continue;
-        if (!mounted) return;
-        final done = await RateUserSheet.show(
-          context,
-          targetId: widget.userId,
-          auctionId: id,
-          role: role,
-          targetLabel: '@${(_row?['login'] as String?) ?? ''}',
-        );
-        if (done == true) {
-          await _load();
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Оценка отправлена')),
-          );
-        }
-        opened = true;
-        break;
-      }
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Нет доступной сделки для новой оценки'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Ошибка оценки: $e')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -323,48 +243,29 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ],
         if (!isSelf) ...[
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _startingChat ? null : _startChat,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C3AED),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: _startingChat
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.chat_bubble_outline),
-                  label: Text(_startingChat ? '…' : 'Начать чат'),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _startingChat ? null : _startChat,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              const SizedBox(width: 10),
-              OutlinedButton.icon(
-                onPressed: _rateUser,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF7C3AED)),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 16,
-                    horizontal: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: const Icon(Icons.star_border_rounded),
-                label: const Text('Оценить'),
-              ),
-            ],
+              icon: _startingChat
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.chat_bubble_outline),
+              label: Text(_startingChat ? '…' : 'Начать чат'),
+            ),
           ),
         ],
       ],

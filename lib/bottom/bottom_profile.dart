@@ -4,11 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/services/profile_service.dart';
-import 'mini_page/auctions_list_page.dart';
 import 'mini_page/edit_profile_page.dart';
 import 'mini_page/notification_settings_page.dart';
 import 'mini_page/notifications_sheet.dart';
-import 'mini_page/reate_auction_page.dart';
 import 'mini_page/top_up_page.dart';
 
 // ? Страница профиля пользователя
@@ -128,8 +126,6 @@ class _BottomProfileState extends State<BottomProfile> {
 
     final user = _profileData!['user'];
     final postsCount = _profileData!['postsCount'] as int;
-    final activeAuctions = _profileData!['activeAuctions'] as int;
-    final completedAuctions = _profileData!['completedAuctions'] as int;
     final rating = _profileData!['rating'] as double;
     final ratingCount = _profileData!['ratingCount'] as int? ?? 0;
     final points = _profileData!['points'] as int? ?? 0;
@@ -233,13 +229,6 @@ class _BottomProfileState extends State<BottomProfile> {
                 label: 'Очков',
                 icon: Icons.star,
                 color: Colors.orange,
-              ),
-              const SizedBox(width: 30),
-              _ProfileStat(
-                value: '$activeAuctions',
-                label: 'Аукционов',
-                icon: Icons.gavel,
-                color: const Color(0xFF7C3AED),
               ),
               const SizedBox(width: 30),
               _ProfileStat(
@@ -367,33 +356,6 @@ class _BottomProfileState extends State<BottomProfile> {
 
           // ? Меню профиля
           _ProfileMenuItem(
-            icon: '➕',
-            title: 'Создать аукцион',
-            subtitle: 'Выставь игру на продажу',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CreateAuctionPage(),
-                ),
-              );
-            },
-          ),
-          _ProfileMenuItem(
-            icon: '🔨',
-            title: 'Мои аукционы',
-            subtitle:
-                '$activeAuctions активных, $completedAuctions завершённых',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AuctionsListPage(),
-                ),
-              );
-            },
-          ),
-          _ProfileMenuItem(
             icon: '🔔',
             title: 'Уведомления',
             subtitle: 'История оповещений',
@@ -402,7 +364,7 @@ class _BottomProfileState extends State<BottomProfile> {
           _ProfileMenuItem(
             icon: '⚙️',
             title: 'Настроить уведомления',
-            subtitle: 'Чаты, аукционы и лента',
+            subtitle: 'Чаты и лента',
             onTap: () {
               Navigator.push(
                 context,

@@ -1,12 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum FavoriteKind { post, auction }
+enum FavoriteKind { post }
 
 extension FavoriteKindX on FavoriteKind {
-  String get value => this == FavoriteKind.post ? 'post' : 'auction';
+  String get value => 'post';
 }
 
-/// Закладки пользователя (посты и аукционы).
+/// Закладки пользователя (посты).
 class FavoriteService {
   FavoriteService._();
   static final FavoriteService instance = FavoriteService._();
@@ -85,33 +85,6 @@ class FavoriteService {
         .inFilter('id', ids);
     final byId = {
       for (final p in (posts as List)) ((p as Map)['id'] as num).toInt(): p,
-    };
-    return [
-      for (final id in ids)
-        if (byId[id] != null) Map<String, dynamic>.from(byId[id] as Map),
-    ];
-  }
-
-  Future<List<Map<String, dynamic>>> listFavoriteAuctions({int limit = 50}) async {
-    final uid = _sb.auth.currentUser?.id;
-    if (uid == null) return const [];
-    final favs = await _sb
-        .from('Favorite')
-        .select('ref_id, created_at')
-        .eq('user_id', uid)
-        .eq('kind', FavoriteKind.auction.value)
-        .order('created_at', ascending: false)
-        .limit(limit);
-    final ids = [
-      for (final f in (favs as List)) ((f as Map)['ref_id'] as num).toInt(),
-    ];
-    if (ids.isEmpty) return const [];
-    final rows = await _sb
-        .from('Auction_items')
-        .select()
-        .inFilter('id', ids);
-    final byId = {
-      for (final p in (rows as List)) ((p as Map)['id'] as num).toInt(): p,
     };
     return [
       for (final id in ids)

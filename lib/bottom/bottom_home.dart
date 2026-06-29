@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../database/auction_service.dart';
 import '../database/digiseller_api.dart';
 import '../database/post_content_codec.dart';
 import '../widgets/notification_bell.dart';
@@ -24,7 +23,6 @@ class _BottomHomeState extends State<BottomHome> {
   List<dynamic> _searchResults = [];
   bool _isLoadingResults = false;
 
-  List<Map<String, dynamic>> _liveAuctions = [];
   List<DigisellerProduct> _discountedProducts = [];
   Map<String, dynamic>? _bestPost;
   bool _isLoadingData = true;
@@ -39,20 +37,9 @@ class _BottomHomeState extends State<BottomHome> {
   Future<void> _loadInitialData() async {
     setState(() => _isLoadingData = true);
     try {
-      await AuctionService.instance.finalizeExpiredAuctions();
-
-      // 1. Загрузка активных аукционов
-      final auctionData = await supabase
-          .from('Auction_items')
-          .select('id, title, start_price, ended_at, url_item, bid_count')
-          .eq('is_active', true)
-          .order('created_at', ascending: false)
-          .limit(5);
-
-      // 2. Загрузка товаров из Digiseller
       final products = await _api.fetchProducts();
 
-      // 3. Загрузка лучшего поста дня (по количеству лайков)
+      // Лучший пост дня (по количеству лайков)
       final postData = await supabase
           .from('Post')
           .select('id, content, like, user:User!user_id(username, avatar)')
@@ -61,7 +48,6 @@ class _BottomHomeState extends State<BottomHome> {
           .maybeSingle();
 
       setState(() {
-        _liveAuctions = List<Map<String, dynamic>>.from(auctionData);
         _discountedProducts = products.take(5).toList();
         _bestPost = postData;
         _isLoadingData = false;
@@ -188,9 +174,6 @@ class _BottomHomeState extends State<BottomHome> {
           _buildBestPostCard(),
         ],
         const SizedBox(height: 28),
-        _buildSectionHeader('⚡ Активные аукционы', () {}),
-        _buildAuctionsList(),
-        const SizedBox(height: 32),
         _buildSectionHeader('🏷️ Рекомендуемые товары', () {}),
         _buildProductsList(),
       ],
@@ -328,30 +311,6 @@ class _BottomHomeState extends State<BottomHome> {
     );
   }
 
-  Widget _buildAuctionsList() {
-    if (_isLoadingData) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-    if (_liveAuctions.isEmpty) return const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Нет активных аукционов', style: TextStyle(color: Colors.grey)));
-
-    return SizedBox(
-      height: 210,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _liveAuctions.length,
-        itemBuilder: (context, index) {
-          final a = _liveAuctions[index];
-          return _AuctionCard(
-            title: a['title'] ?? 'Лот',
-            price: a['start_price'].toString(),
-            bids: a['bid_count'].toString(),
-            time: 'LIVE',
-            emoji: '🎮',
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildProductsList() {
     if (_isLoadingData) return const SizedBox();
     return Padding(
@@ -452,39 +411,7 @@ class _BottomHomeState extends State<BottomHome> {
   }
 }
 
-// Вспомогательные компоненты (Аукционы и Товары)
-
-class _AuctionCard extends StatelessWidget {
-  final String title, price, bids, time, emoji;
-  const _AuctionCard({required this.title, required this.price, required this.bids, required this.time, required this.emoji});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 160,
-      margin: const EdgeInsets.only(right: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(emoji, style: const TextStyle(fontSize: 32)),
-          const Spacer(),
-          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('$bids ставок', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$price ⭐', style: const TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold)),
-              Text(time, style: const TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-}
+// Вспомогательные компоненты (товары)
 
 class _DiscountCard extends StatelessWidget {
   final String emoji, title, desc, oldPrice, newPrice, discount;

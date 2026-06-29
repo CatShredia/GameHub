@@ -68,14 +68,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   onChanged: (value) => _save(_prefs.copyWith(chats: value)),
                 ),
                 _SwitchCard(
-                  icon: Icons.gavel,
-                  title: 'Аукционы',
-                  subtitle:
-                      'Новые ставки, завершение аукциона и выигранные лоты.',
-                  value: _prefs.auctions,
-                  onChanged: (value) => _save(_prefs.copyWith(auctions: value)),
-                ),
-                _SwitchCard(
                   icon: Icons.rss_feed,
                   title: 'Лента',
                   subtitle: 'Лайки, комментарии и цитаты ваших постов.',
